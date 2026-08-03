@@ -1,0 +1,469 @@
+﻿--- a/src/index.js
++++ b/src/index.js
+@@ -6,7 +6,10 @@
+   GatewayIntentBits,
+   Events,
+   MessageFlags,
+-  EmbedBuilder
++  EmbedBuilder,
++  ActionRowBuilder,
++  ButtonBuilder,
++  ButtonStyle
+ } from 'discord.js';
+ 
+ import { isAuthorized } from './permissions.js';
+@@ -23,6 +26,18 @@
+ import { audit } from './audit.js';
+ import { startScheduler } from './schedule.js';
+ import { startWarScheduler } from './war-scheduler.js';
++import { normalizeClanMembers, normalizeRaceParticipants, normalizeRaceMeta, mergeMemberIntel } from './war-intel.js';
++import {
++  loadWarHistory,
++  makeDayKey,
++  makeRaceKey,
++  computeDayContribution,
++  computeRaceContribution,
++  computeDailyBaseline,
++  computeWeeklyBaseline,
++  trendArrow
++} from './war-history.js';
++import { openVote, getVote, castVote, tally, decide } from './votes.js';
+ 
+ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+ 
+@@ -45,6 +60,22 @@
+   return up.replace(/[^A-Z0-9]/g, '').slice(0, 14);
+ }
+ 
++function snapshotIdFrom(meta, dayKey) {
++  const date = new Date().toISOString().slice(0, 10);
++  const safeDay = String(dayKey || '').replace(':', '-');
++  const rk = meta && meta.periodIndex !== undefined ? String(meta.periodIndex) : '';
++  return `${rk}_${safeDay}_${date}`;
++}
++
++function sortByDesc(list, key) {
++  return list.slice().sort((a, b) => Number(b[key] || 0) - Number(a[key] || 0));
++}
++
++function formatList(items, fmt, empty = 'No data') {
++  if (!items || !items.length) return empty;
++  return items.map(fmt).join('\n');
++}
++
+ client.once(Events.ClientReady, c => {
+   console.log(' KRAKEN ONLINE as ' + c.user.tag);
+   startScheduler(client);
+@@ -52,6 +83,70 @@
+ });
+ 
+ client.on(Events.InteractionCreate, async interaction => {
++  // Button interactions (vote panel)
++  if (interaction.isButton()) {
++    if (!isAuthorized(interaction)) {
++      return interaction.reply({
++        content: ' You do not have the **kraken** role required to use this.',
++        flags: MessageFlags.Ephemeral
++      });
++    }
++
++    try {
++      const id = String(interaction.customId || '');
++      if (!id.startsWith('kv:')) return; // ignore non-kraken buttons
++
++      // Format: kv:<snapshotId>:<action>
++      const parts = id.split(':');
++      const snapshotId = parts[1];
++      const action = parts[2];
++
++      const guildId = interaction.guildId;
++      if (!guildId) {
++        return interaction.reply({ content: ' This action is only available in a server.', flags: MessageFlags.Ephemeral });
++      }
++
++      const v = getVote(guildId, snapshotId);
++      if (!v) {
++        return interaction.reply({ content: ' Vote is not open (or it expired). Run `/recent` to open todays vote panel again.', flags: MessageFlags.Ephemeral });
++      }
++
++      if (action === 'STATUS') {
++        const t = tally(v);
++        const d = decide(t);
++        const lines = [];
++        lines.push(`Votes: **${t.total}**`);
++        lines.push(`Kick All: **${t.kickAll}**`);
++        lines.push(`No Action: **${t.noAction}**`);
++        lines.push(`Kick One: ${t.kickOne.map((n, i) => `#${i + 1}=${n}`).join('  ')}`);
++        lines.push('Result: **' + d.status + '**  ' + (d.reason || ''));
++        return interaction.reply({ content: lines.join('\n'), flags: MessageFlags.Ephemeral });
++      }
++
++      if (action === 'KA') {
++        castVote(guildId, snapshotId, interaction.user.id, { type: 'KICK_ALL' });
++        return interaction.reply({ content: ' Vote recorded: **Kick All (bottom 5)**', flags: MessageFlags.Ephemeral });
++      }
++      if (action === 'NA') {
++        castVote(guildId, snapshotId, interaction.user.id, { type: 'NO_ACTION' });
++        return interaction.reply({ content: ' Vote recorded: **No Action**', flags: MessageFlags.Ephemeral });
++      }
++      if (action && action.startsWith('K1')) {
++        const idx = Number(action.replace('K1', ''));
++        if (!Number.isInteger(idx) || idx < 1 || idx > 5) {
++          return interaction.reply({ content: ' Invalid option.', flags: MessageFlags.Ephemeral });
++        }
++        castVote(guildId, snapshotId, interaction.user.id, { type: 'KICK_ONE', index: idx - 1 });
++        const target = v.bottomFive?.[idx - 1]?.name || `#${idx}`;
++        return interaction.reply({ content: ` Vote recorded: **Kick One**  ${target}`, flags: MessageFlags.Ephemeral });
++      }
++
++      return interaction.reply({ content: ' Unknown action.', flags: MessageFlags.Ephemeral });
++    } catch {
++      return interaction.reply({ content: ' Could not record vote right now. Try again.', flags: MessageFlags.Ephemeral });
++    }
++  }
++
+   if (!interaction.isChatInputCommand()) return;
+ 
+   if (!isAuthorized(interaction)) {
+@@ -149,6 +244,73 @@
+     if (interaction.commandName === 'player') {
+       audit(interaction, 'player');
+       await interaction.deferReply();
+ 
++      const view = interaction.options.getString('view') || 'summary';
+       const raw = interaction.options.getString('tag', true);
+       const tag = cleanTag(raw);
+ 
++      // "Detail" view is leader-oriented: war today + trend + donations.
++      if (view === 'detail') {
++        const [clan, race] = await Promise.all([
++          getClan(process.env.CLAN_TAG),
++          getCurrentRiverRace(process.env.CLAN_TAG)
++        ]);
++
++        const meta = normalizeRaceMeta(race);
++        const dayKey = makeDayKey(meta);
++        const raceKey = makeRaceKey(meta);
++
++        const clanMembers = normalizeClanMembers(clan);
++        const clanTagNoHash = String(process.env.CLAN_TAG || '').replace('#', '').toUpperCase();
++        const raceParticipants = normalizeRaceParticipants(race, clanTagNoHash);
++        const members = mergeMemberIntel({ clanMembers, raceParticipants });
++
++        const m = members.find(x => x.tag === tag) || null;
++
++        const h = loadWarHistory();
++        const contrib = computeDayContribution(h, dayKey);
++        const row = contrib ? contrib.items.find(x => x.tag === tag) : null;
++
++        const fameToday = row ? Number(row.fame || 0) : 0;
++        const decksToday = row ? Number(row.decksUsedToday || 0) : (m ? Number(m.decksUsedToday || 0) : 0);
++        const base = contrib ? computeDailyBaseline(h, dayKey, tag, 4) : null;
++        const arrow = base === null ? '' : trendArrow(fameToday, base);
++
++        const donations = m ? Number(m.donations || 0) : 0;
++        const trophies = m ? Number(m.trophies || 0) : 0;
++
++        const reasons = [];
++        if (fameToday === 0) reasons.push('0 war points today');
++        if (decksToday === 0) reasons.push('0 decks used today');
++        if (reasons.length === 0) reasons.push('steady contribution  keep it up');
++
++        const embed = new EmbedBuilder()
++          .setTitle(` Player Intel  ${m ? m.name : ('#' + tag)}`)
++          .setDescription(`Tag: **#${tag}**  Day: **${dayKey}**  Race: **${raceKey}**`)
++          .addFields(
++            { name: 'War today', value: `${arrow} **${fameToday}** fame${base !== null ? ` (baseline ~${Math.round(base)})` : ''}`, inline: true },
++            { name: 'Decks today', value: String(decksToday), inline: true },
++            { name: 'Donations (season)', value: String(donations), inline: true },
++            { name: 'Trophies', value: String(trophies), inline: true },
++            { name: 'Notes', value: reasons.join('  '), inline: false }
++          )
++          .setFooter(degradedFooter());
++
++        return interaction.editReply({ embeds: [embed] });
++      }
++
+       const p = await getPlayer(tag);
+ 
+       const embed = new EmbedBuilder()
+@@ -233,21 +395,77 @@
+     if (interaction.commandName === 'war') {
+       audit(interaction, 'war');
+       await interaction.deferReply();
+ 
+-      const race = await getCurrentRiverRace(process.env.CLAN_TAG);
+-      const state = race && race.state ? String(race.state) : 'unknown';
+-
+-      // best-effort extraction; API fields vary, so keep it resilient
+-      const section = race && race.sectionIndex !== undefined ? String(race.sectionIndex) : '';
+-      const period = race && race.periodIndex !== undefined ? String(race.periodIndex) : '';
+-
+-      const embed = new EmbedBuilder()
+-        .setTitle(' River Race')
+-        .setDescription('Current status snapshot')
+-        .addFields(
+-          { name: 'State', value: state, inline: true },
+-          { name: 'Day (sectionIndex)', value: section, inline: true },
+-          { name: 'Race (periodIndex)', value: period, inline: true }
+-        )
+-        .setFooter(degradedFooter());
+-
+-      return interaction.editReply({ embeds: [embed] });
++      const view = interaction.options.getString('view') || 'today';
++      const race = await getCurrentRiverRace(process.env.CLAN_TAG);
++      const meta = normalizeRaceMeta(race);
++      const dayKey = makeDayKey(meta);
++      const raceKey = makeRaceKey(meta);
++
++      if (view === 'status') {
++        const embed = new EmbedBuilder()
++          .setTitle(' River Race  Current')
++          .addFields(
++            { name: 'State', value: String(meta.state || 'unknown'), inline: true },
++            { name: 'Day', value: String(dayKey), inline: true },
++            { name: 'Race', value: String(raceKey), inline: true }
++          )
++          .setFooter(degradedFooter());
++        return interaction.editReply({ embeds: [embed] });
++      }
++
++      const h = loadWarHistory();
++      const contrib = computeDayContribution(h, dayKey);
++
++      if (!contrib) {
++        const embed = new EmbedBuilder()
++          .setTitle(' War Snapshot')
++          .setDescription('Not enough war history captured yet. (The scheduler needs at least 2 snapshots.)')
++          .addFields(
++            { name: 'Tip', value: 'Leave Kraken running  it auto-captures data every ~10 minutes.', inline: false }
++          )
++          .setFooter(degradedFooter());
++        return interaction.editReply({ embeds: [embed] });
++      }
++
++      const rows = sortByDesc(contrib.items, 'fame');
++      const top = rows.slice(0, 5);
++      const bottom = rows.slice(-5).reverse();
++
++      const roster = rows.map(r => {
++        const base = computeDailyBaseline(h, dayKey, r.tag, 4);
++        const arrow = base === null ? '' : trendArrow(r.fame, base);
++        const decks = r.decksUsedToday !== undefined ? `  decks: ${r.decksUsedToday}` : '';
++        return `${arrow} ${r.name}  ${r.fame}${decks}`;
++      });
++
++      const embed = new EmbedBuilder()
++        .setTitle(view === 'bottom' ? ' War  Needs Attention' : ' War  Today Snapshot')
++        .setDescription(`Day: **${dayKey}**  Trend arrows compare each player to their recent days`)
++        .addFields(
++          ...(view !== 'bottom'
++            ? [{ name: ' Top 5', value: formatList(top, (r, i) => `${i + 1}. ${r.name}  ${r.fame}`, 'No data'), inline: true }]
++            : []),
++          { name: ' Bottom 5', value: formatList(bottom, (r, i) => `${i + 1}. ${r.name}  ${r.fame}`, 'No data'), inline: true }
++        )
++        .setFooter(degradedFooter());
++
++      // Keep roster readable
++      embed.addFields({ name: ' Roster (trend vs history)', value: roster.slice(0, 35).join('\n') || 'No data', inline: false });
++      if (roster.length > 35) embed.addFields({ name: '', value: `(${roster.length - 35} more omitted)`, inline: false });
++
++      return interaction.editReply({ embeds: [embed] });
+     }
+@@ -290,19 +508,147 @@
+     if (interaction.commandName === 'recent') {
+       audit(interaction, 'recent');
+       await interaction.deferReply();
+ 
+-      const br = getBreakerStatus();
+-      const c = await getClan(process.env.CLAN_TAG);
+-
+-      const topDonor = (c.memberList || [])
+-        .slice()
+-        .sort((a,b) => (b.donations || 0) - (a.donations || 0))
+-        .slice(0, 5)
+-        .map((m, i) => (i+1) + '. ' + m.name + '  ' + (m.donations || 0))
+-        .join('\n');
+-
+-      const embed = new EmbedBuilder()
+-        .setTitle(' Recent Snapshot')
+-        .setDescription('Daily snapshot for leaders')
+-        .addFields(
+-          { name: 'Top Donors', value: topDonor || 'No data', inline: false }
+-        )
+-        .setFooter(degradedFooter());
+-
+-      return interaction.editReply({ embeds: [embed] });
++      const view = interaction.options.getString('view') || 'dashboard';
++
++      const br = getBreakerStatus();
++      const [clan, race] = await Promise.all([
++        getClan(process.env.CLAN_TAG),
++        getCurrentRiverRace(process.env.CLAN_TAG)
++      ]);
++
++      const meta = normalizeRaceMeta(race);
++      const dayKey = makeDayKey(meta);
++      const raceKey = makeRaceKey(meta);
++
++      const clanMembers = normalizeClanMembers(clan);
++      const clanTagNoHash = String(process.env.CLAN_TAG || '').replace('#', '').toUpperCase();
++      const raceParticipants = normalizeRaceParticipants(race, clanTagNoHash);
++      const members = mergeMemberIntel({ clanMembers, raceParticipants });
++
++      const h = loadWarHistory();
++      const dayContrib = computeDayContribution(h, dayKey);
++
++      // Donations (season-to-date) ranking
++      const donorsDesc = sortByDesc(members, 'donations');
++      const donorsAsc = donorsDesc.slice().reverse();
++
++      // War contribution (today) ranking (requires at least 2 snapshots)
++      const contribMap = new Map();
++      if (dayContrib) {
++        for (const r of dayContrib.items) contribMap.set(r.tag, r);
++      }
++
++      const warRows = members.map(m => {
++        const r = contribMap.get(m.tag);
++        const fameToday = r ? Number(r.fame || 0) : 0;
++        const decksToday = r ? Number(r.decksUsedToday || 0) : Number(m.decksUsedToday || 0);
++        const base = dayContrib ? computeDailyBaseline(h, dayKey, m.tag, 4) : null;
++        const arrow = base === null ? '' : trendArrow(fameToday, base);
++        return {
++          tag: m.tag,
++          name: m.name,
++          fameToday,
++          decksToday,
++          donations: Number(m.donations || 0),
++          arrow,
++          base
++        };
++      });
++
++      const warDesc = warRows.slice().sort((a, b) => b.fameToday - a.fameToday);
++      const warAsc = warDesc.slice().reverse();
++
++      // Build an overall "needs attention" list using simple weighted ranks
++      const n = warRows.length || 1;
++      const rankOf = (sortedAsc, tag) => {
++        const idx = sortedAsc.findIndex(x => x.tag === tag);
++        return idx < 0 ? (n - 1) : idx;
++      };
++
++      const decksAsc = warRows.slice().sort((a, b) => a.decksToday - b.decksToday);
++      const donationsAsc = warRows.slice().sort((a, b) => a.donations - b.donations);
++
++      const scored = warRows.map(m => {
++        const warRank = rankOf(warAsc, m.tag) / Math.max(1, n - 1);
++        const deckRank = rankOf(decksAsc, m.tag) / Math.max(1, n - 1);
++        const donRank = rankOf(donationsAsc, m.tag) / Math.max(1, n - 1);
++        const score = (0.5 * warRank) + (0.3 * deckRank) + (0.2 * donRank);
++
++        const reasons = [];
++        if (m.fameToday === 0) reasons.push('0 war points today');
++        if (m.decksToday === 0) reasons.push('0 decks used today');
++        if (m.donations === 0) reasons.push('0 donations (season)');
++        if (!reasons.length) {
++          // Fallback: explain the weakest area
++          const worst = Math.max(warRank, deckRank, donRank);
++          if (worst === warRank) reasons.push('low war contribution (vs clan)');
++          else if (worst === deckRank) reasons.push('low war activity (decks)');
++          else reasons.push('low donations (vs clan)');
++        }
++
++        return { ...m, score, reasons };
++      }).sort((a, b) => b.score - a.score);
++
++      const bottomOverall = scored.slice(0, 5);
++
++      const snapshotId = snapshotIdFrom(meta, dayKey);
++      const guildId = interaction.guildId;
++      if (guildId) openVote(guildId, snapshotId, bottomOverall.map(x => ({ tag: x.tag, name: x.name, reasons: x.reasons })));
++
++      if (view === 'vote') {
++        const v = guildId ? getVote(guildId, snapshotId) : null;
++        const t = v ? tally(v) : null;
++        const d = t ? decide(t) : null;
++        const embed = new EmbedBuilder()
++          .setTitle(' Vote Status  Bottom 5')
++          .setDescription(`Snapshot: **${snapshotId}**`)
++          .addFields(
++            { name: 'Votes cast', value: t ? String(t.total) : '0', inline: true },
++            { name: 'Kick All', value: t ? String(t.kickAll) : '0', inline: true },
++            { name: 'No Action', value: t ? String(t.noAction) : '0', inline: true },
++            { name: 'Kick One', value: t ? t.kickOne.map((n, i) => `#${i + 1}=${n}`).join('  ') : '', inline: false },
++            { name: 'Result', value: d ? `**${d.status}**  ${d.reason || ''}` : '**PENDING**  open /recent to start todays vote', inline: false }
++          )
++          .setFooter(degradedFooter());
++        return interaction.editReply({ embeds: [embed] });
++      }
++
++      const warTop5 = warDesc.slice(0, 5);
++      const warBottom5 = warAsc.slice(0, 5);
++      const donTop5 = donorsDesc.slice(0, 5);
++      const donBottom5 = donorsAsc.slice(0, 5);
++
++      const embed = new EmbedBuilder()
++        .setTitle(' Leader Dashboard')
++        .setDescription(`Day: **${dayKey}**  Race: **${raceKey}**  CR Health: **${br.isOpen ? 'COOLDOWN' : 'OK'}**`)
++        .addFields(
++          ...(view !== 'risks'
++            ? [
++                {
++                  name: ' War  Top 5 (today)',
++                  value: dayContrib
++                    ? formatList(warTop5, (r, i) => `${i + 1}. ${r.arrow} ${r.name}  ${r.fameToday}`, 'No data yet')
++                    : 'No data yet (scheduler needs 2+ snapshots)',
++                  inline: true
++                },
++                {
++                  name: ' War  Bottom 5 (today)',
++                  value: dayContrib
++                    ? formatList(warBottom5, (r, i) => `${i + 1}. ${r.arrow} ${r.name}  ${r.fameToday}`, 'No data yet')
++                    : 'No data yet (scheduler needs 2+ snapshots)',
++                  inline: true
++                },
++                {
++                  name: ' Donations  Top 5',
++                  value: formatList(donTop5, (m, i) => `${i + 1}. ${m.name}  ${m.donations || 0}`, 'No data'),
++                  inline: true
++                },
++                {
++                  name: ' Donations  Bottom 5',
++                  value: formatList(donBottom5, (m, i) => `${i + 1}. ${m.name}  ${m.donations || 0}`, 'No data'),
++                  inline: true
++                }
++              ]
++            : []),
++          {
++            name: ' Bottom 5 (overall  history-aware)',
++            value: bottomOverall
++              .map((m, i) => `${i + 1}. ${m.arrow} ${m.name}  war ${m.fameToday}, decks ${m.decksToday}, don ${m.donations}\n    ${m.reasons.slice(0, 2).join('  ')}`)
++              .join('\n') || 'No data',
++            inline: false
++          },
++          {
++            name: ' Vote Panel',
++            value: 'Leaders with the **kraken** role can vote below. Voting uses the snapshot shown above (not shifting data).',
++            inline: false
++          }
++        )
++        .setFooter(degradedFooter());
++
++      const row1 = new ActionRowBuilder().addComponents(
++        new ButtonBuilder().setCustomId(`kv:${snapshotId}:STATUS`).setLabel('Vote status').setStyle(ButtonStyle.Secondary),
++        new ButtonBuilder().setCustomId(`kv:${snapshotId}:KA`).setLabel('Kick all bottom 5').setStyle(ButtonStyle.Danger),
++        new ButtonBuilder().setCustomId(`kv:${snapshotId}:NA`).setLabel('No action').setStyle(ButtonStyle.Primary)
++      );
++
++      const row2 = new ActionRowBuilder().addComponents(
++        new ButtonBuilder().setCustomId(`kv:${snapshotId}:K11`).setLabel('Kick #1').setStyle(ButtonStyle.Danger),
++        new ButtonBuilder().setCustomId(`kv:${snapshotId}:K12`).setLabel('Kick #2').setStyle(ButtonStyle.Danger),
++        new ButtonBuilder().setCustomId(`kv:${snapshotId}:K13`).setLabel('Kick #3').setStyle(ButtonStyle.Danger),
++        new ButtonBuilder().setCustomId(`kv:${snapshotId}:K14`).setLabel('Kick #4').setStyle(ButtonStyle.Danger),
++        new ButtonBuilder().setCustomId(`kv:${snapshotId}:K15`).setLabel('Kick #5').setStyle(ButtonStyle.Danger)
++      );
++
++      return interaction.editReply({ embeds: [embed], components: guildId ? [row1, row2] : [] });
+     }

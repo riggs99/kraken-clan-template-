@@ -1,0 +1,273 @@
+# Working rules for this project
+
+This is **kraken-clan-template** — a genericized, portable copy of KRAKEN (a
+Discord bot for Clash Royale clan management), derived from a real, currently
+running production bot for the original clan it was built for. The goal of this
+project is to make that same bot cloneable/deployable for **any** clan, with
+zero hardcoded identity leaking from the original.
+
+## The source project boundary — read this first
+
+The original bot ("kraken1") lives at `c:\dev2\kraken` and is **live,
+in-production, currently serving real users right now**.
+
+- **Never modify, write to, or delete anything under `c:\dev2\kraken`** from
+  within this project. Read-only access only, and only for the specific
+  purpose of comparing against or re-copying a file into *this* project.
+- Never run any command that could affect kraken1's running process — no
+  restart/stop scripts, no `npm` commands, no `git` operations targeting that
+  folder.
+- If something in this project needs a file kraken1 has that wasn't part of
+  the initial copy, **read it from kraken1, then create/edit the copy here**
+  — never edit in place over there.
+- This project has its own fresh git repository, independent of kraken1's
+  history. Nothing here should ever be pushed to kraken1's remote.
+
+**What was already copied** (curated, not a full mirror) — source code,
+scripts, `config/*.json` (still containing kraken1's real IDs — see the task
+list below), `.env.example`, `package.json`/`package-lock.json`, docs,
+`assets/`, `patches/`.
+
+**What was deliberately excluded and must never be pulled in later either**:
+`data/` (kraken1's real production history/DB), `.env` (kraken1's real
+secrets), `logs/` (real production logs), `.git/` (fresh history only),
+`node_modules/` (regenerate via `npm install`), the stray `.bak_*` debug
+files that were sitting in kraken1's `src/`.
+
+## Model selection
+
+- Default to Sonnet for the bulk of this work — the config-extraction pass,
+  routine edits, verify cycles. ~90% of the time.
+- Opus only for a specific bounded moment: designing the eventual multi-clan
+  hosting rollout logic, or anything touching how a real clan's live data
+  would be handled once this template is actually deployed for someone.
+- Don't route to Haiku — same reasoning as kraken1: once this is deployed for
+  a real clan, the stakes (their member data, their Discord roles) are the
+  same as kraken1's.
+
+## Context management
+
+- Suggest `/compact` mid-task when deep into one part of the extraction pass
+  that isn't finished yet.
+- Suggest `/clear` at real boundaries — a phase of the task list below is
+  verified and committed.
+- Never trade quality for token savings on this project specifically —
+  a mistake here doesn't just break one bot, it becomes the mistake every
+  future clan's copy inherits.
+
+## Genericization status — done, verified, ready for a real deployment test
+
+This was produced by a three-angle audit of kraken1 (hardcoded-value hunt,
+guardrail-portability check, crash-recovery trace) plus cross-referencing
+kraken1's own `docs/kraken2-migration-plan.md` (note: that doc describes a
+*different*, bigger architecture — one shared multi-tenant bot serving every
+clan at once. That was considered and explicitly **not** chosen. This project
+is the simpler model: every clan gets its own fully isolated instance, own
+bot token, own database, no shared tenant state at all. Everything below
+reflects that simpler model — nothing here requires the tenant-ID/shared-DB
+rework that doc describes.)
+
+Everything below is **done and verified** (syntax, lint, module-import smoke
+test, `smoke-wiring.js` all pass — see the Verification checklist). The one
+thing that genuinely can't be verified without a real deployment is noted at
+the end.
+
+### 1. Hardcoded clan identity — extracted into config ✅
+
+- `src/recruit/commands/add-member.js`, `apply.js`, `src/recruit/index.js`,
+  `src/recruit/messages.js`, `src/recruit/waitlist.js` — the clan name/tag
+  that used to be hardcoded into user-facing message strings now reads from
+  `config/recruit.config.json`'s `clanName` field (or, for `waitlist.js`,
+  loads it directly via `loadRecruitConfig()` since those functions don't
+  receive `recruitConfig` as a parameter).
+- `src/recruit/welcome-guide.js` — the hardcoded fallback feedback-channel ID
+  was removed entirely (a real ID belonging to one clan sitting there as the
+  "default" would have silently routed a *different* clan's bug reports into
+  the original clan's channel). The hardcoded personal author name is now
+  `recruitConfig.clanName`.
+- `src/dashboard-components.js` — `CLAN_BADGE_URL` now reads from the
+  `CLAN_BADGE_URL` env var, defaulting to `null` (no badge shown) rather than
+  a hardcoded image URL.
+- `src/recruit/onboarding.js` — the hardcoded welcome-image filename/path is
+  gone; the welcome post now optionally reads `recruitConfig.welcomeImagePath`
+  and skips the image entirely if unset. The original clan's actual logo file
+  was deleted from `assets/welcome/` — nothing ships by default.
+- `src/war-cycle.js` — the war-anchor comment was reworded to note this is
+  very likely a genuine global CR constant, not clan-specific, but to verify
+  against your own clan's `periodType` data before relying on it. The
+  underlying logic wasn't changed (already correctly a last-resort fallback).
+
+### 2. Hardcoded paths — fixed ✅
+
+- The absolute Windows path that used to default `KRAKEN_DB_PATH` in 5 files
+  (`src/ops.js`, `src/recruit/db.js`, `scripts/full-clan-reset.js`,
+  `scripts/dm-welcome-guide-blast.js`, `scripts/test-plan-smoke.js`) is now
+  `path.join(process.cwd(), 'data', 'kraken.db')`, matching how
+  `HISTORY_PATH` in `src/history.js` already did it correctly.
+- `ecosystem.config.js` turned out to be **dead** — confirmed by actually
+  requiring it: it silently returned an empty object given this project's
+  `"type": "module"` setting, so it was deleted rather than fixed.
+  `ecosystem.config.cjs` is the real one; its `cwd` is now derived from
+  `__dirname` instead of hardcoded, and its two duplicate/misplaced `cwd`
+  keys inside `env` (which did nothing) were removed.
+- `scripts/kraken-boot.ps1` and `scripts/kraken-stop.ps1` now derive their
+  root from `$PSScriptRoot`, matching the pattern `kraken-restart.ps1`/
+  `kraken-verify.ps1` already used correctly. Cosmetic hardcoded-path hints
+  in `Write-Host` messages across all four scripts were fixed too.
+- `scripts/scrub-logs.ps1` had a hardcoded Windows username in its PM2 log
+  paths (found during the final clean-check, not the original audit) — now
+  derived from `$env:USERPROFILE`.
+
+### 3. Config files — genericized, dead keys removed ✅
+
+- `config/ops.config.json` and `config/recruit.config.json` now use the
+  `PUT_*` placeholder convention `src/config/loadConfig.js`'s
+  `findPutPlaceholders` guard already enforced — confirmed live that the
+  guard actually blocks startup with a clear message until real values are
+  filled in.
+- Confirmed-dead keys were deleted outright rather than templated:
+  `ops.config.json`'s `channels`/`roles`/`clan`/`features` blocks (nothing
+  reads them beyond `enabled`+`opsGuildId`); `recruit.config.json`'s
+  `roles.applicantRoleId`/`approvedRoleId` and the `cooldowns`/`probation`/
+  `scoring` blocks.
+- Added `clanName` (now a required key in `loadConfig.js`) and
+  `welcomeImagePath` (optional) to `recruit.config.json`, and
+  `channels.feedbackChannelId` to support the welcome-guide.js fix above.
+
+### 4. `.env.example` — expanded ✅
+
+Now documents every env var the code actually reads: `KRAKEN_DB_PATH`,
+`REPORTS_CHANNEL_ID`, `GRACE_DAYS`, `RECRUIT_WAR_ANCHOR_UTC`/
+`RECRUIT_WAR_ANCHOR_EPOCH_MS`, `RECRUIT_FEEDBACK_CHANNEL_ID`,
+`RECRUIT_STARTUP_BACKFILL_DAYS`, `OPS_MAX_LINE_CHARS`,
+`RECRUIT_DISABLE_COOLDOWNS`, `DEBUG_CR_API_BODY`, `CLAN_BADGE_URL` — each
+with a one-line comment on what it controls and its default if unset.
+
+### 5. `package.json`'s `"name"` field ✅
+
+Now `"kraken-clan-template"`.
+
+### 6. Also found and fixed during the final clean-check pass (beyond the original audit)
+
+- Two throwaway dev-debug scripts at the repo root (`inspect-api-fields.js`,
+  `test-cr.js`) hardcoded the clan tag and weren't referenced anywhere in
+  `package.json` — deleted rather than genericized.
+- The unused `landingMessage` export in `messages.js` (confirmed via grep to
+  have zero callers) was dead code carrying the same hardcoded clan name —
+  deleted rather than fixed.
+- The `.claude/` folder (session-specific tool-permission config, of no value
+  to anyone cloning this template) was removed entirely.
+- Several doc files (`DEPLOYMENT.md`, `SECURITY.md`, `docs/commands.md`,
+  `DEV.md`, `README.md`, `docs/bot-startup.md`) had example clan tags,
+  example paths pointing at the original machine, or descriptive prose
+  mentioning the original clan by name — all genericized.
+
+## Guardrails already verified safe — don't weaken these while extracting config
+
+A dedicated audit traced these against a **completely empty, fresh clan
+state** (no history, no profiles, no prior tracking) — every one of them was
+confirmed to degrade gracefully rather than crash or misbehave:
+
+- `src/permissions.js` — `isLeaderOrAdmin` fails closed (only real Discord
+  Administrators pass) when role IDs aren't configured yet, rather than
+  silently letting everyone through. `confirmMemberGone` and
+  `applyRolesVerified` have no stored-state dependency at all.
+- `src/history.js` — every function (including the lock/backup helpers) was
+  verified against a truly empty `{firstSeen:{}, days:{}}` starting state.
+  No divide-by-zero, no null-deref.
+- `src/circuit-breaker.js` — stateless in-memory, resets cleanly per process.
+- `src/recruit/evaluator.js` — explicit fail-safe handling when role IDs
+  aren't configured (`missingRoles` check, posts a clear "run
+  `/recruit-setup`" message rather than crashing); `isFirstEverCheck`
+  correctly bootstraps a brand-new clan's very first tick.
+- `src/war-cycle.js` — the war-anchor fallback is genuinely last-resort; a
+  fresh clan's own snapshots stamp real `periodType`/`periodIndex` data
+  immediately, so the anchor essentially never gets reached for a new clan.
+
+**Do not refactor any of this reasoning away while doing the config
+extraction above** — the goal is making strings/IDs configurable, not
+touching the empty-state handling that makes all of this safe already.
+
+## Hard-won correctness rules — verify these survived the copy intact
+
+Pulled from kraken1's own `docs/kraken2-migration-plan.md`, written after a
+full season of production use plus multiple audit passes. These are specific
+bugs that were found and fixed the hard way — re-verify each one is still
+true in this copy before considering the port "clean," since a careless edit
+during the config-extraction pass could silently reintroduce any of them:
+
+- War-day classification must prefer, in order: the stored `warDay` flag →
+  live race state → period-index math → decks-used activity that day →
+  anchor-cycle tiebreaker (last resort). Never classify a day from
+  cumulative fame alone — it lingers across the whole race week.
+- Any participation-rate stat must exclude members with `historyDays < 3` or
+  `inGrace` — otherwise a fresh tracking window reads as 0% participation
+  for the entire clan simultaneously, not genuine inactivity.
+- Participation/fame/deck math must stay restricted to actual war days, not
+  every tracked calendar day — training days structurally have zero fame.
+- `seriesForTag` can return fewer rows than the requested `dayKeys` (a gap
+  day). Always key subsequent lookups off the row's own `.day` field, never
+  assume row `i` corresponds to `dayKeys[i]`.
+- Fame delta must be a true per-day delta, never `max(cumulative, diff)` —
+  that collapses the delta into summing running totals instead.
+- Only HTTP 429/5xx should trip the CR API circuit breaker. A 404/400 is a
+  caller input error, not an upstream-health signal.
+- A break shields a member from tier *evaluation*, not from clan-membership
+  *sync* — someone who left the clan while on break still gets offboarded.
+- Underwatch/probation streaks must pause (not reset, not keep accruing)
+  while a member is on an active break.
+- Any bot-initiated role change must suppress the manual-role-sync listener
+  first, or the bot's own write double-processes itself through that
+  listener.
+- WAL-mode SQLite needs an explicit `wal_checkpoint(TRUNCATE)` before any raw
+  file-copy backup, or recent writes sitting in the `-wal` file get missed.
+- `player_tag` is stored without a leading `#`, everywhere, no exceptions.
+- `history.js`'s JSON writes must be atomic (temp-file + rename, not a raw
+  `writeFileSync`) — **this was already fixed in kraken1 this session**
+  (matching `discipline.js`'s existing pattern) and should already be present
+  in the copy. Verify it's there, don't reintroduce the non-atomic version.
+
+## Verification checklist
+
+Same five steps as kraken1, adapted for a project with no live bot running
+yet:
+1. ✅ `node --check` on every `.js` file in `src/` and `scripts/` — all pass.
+2. ✅ `npx eslint "src/**/*.js" "scripts/**/*.js"` — zero errors/warnings.
+3. ✅ Module-import smoke test — every changed file imports cleanly. `index.js`
+   specifically was verified twice: once confirming it correctly *refuses* to
+   start with placeholder config still in place (the guard working as
+   designed), and once with temporary dummy real-shaped values confirming the
+   full import chain works end to end. Config was reverted to placeholders
+   immediately after.
+4. ✅ `node scripts/smoke-wiring.js` — same two-pass approach: 6/8 pass against
+   the real placeholder config (2 fail *only* because of the intentional
+   `PUT_*` guard, which is correct), all 8/8 pass with temporary dummy config.
+5. ⬜ **Still needed, and can't be faked**: once real credentials exist for an
+   actual test clan/server, start the bot for real, confirm a clean `KRAKEN
+   ONLINE` with no errors, run `/recruit-setup` against a real Discord server,
+   and confirm every channel/role it creates and every message it sends is
+   correctly generic — no original clan name, no original clan badge, no
+   leftover real Discord IDs anywhere.
+
+Step 5 is the only thing between this and a real handoff — everything that
+can be verified without a live Discord connection has been.
+
+## Shared helpers — reuse these, don't reinvent them
+
+Identical to kraken1, since this is the same codebase:
+- **War-day classification**: `isHistoricalWarDay` (`src/war-cycle.js`).
+- **Cumulative-counter deltas**: `deltaSeries` (`src/window-delta.js`).
+- **Discord membership checks**: `confirmMemberGone(guild, discordId)`
+  (`src/permissions.js`) — three-state, never a bare
+  `.fetch().catch(() => null)`.
+- **Permission checks**: `isLeaderOrAdmin` / `isServerOwner`
+  (`src/permissions.js`).
+
+## Production data safety (once this is actually deployed for a real clan)
+
+This project has no real data of its own yet. But the moment this template
+is cloned and configured for an actual clan, the exact same rule from
+kraken1 applies to that clan's `data/history.json` and `data/kraken.db`:
+back up before any mutation (WAL-safe `.backup()` for the DB, never a raw
+file copy while the bot may be writing), preview/dry-run before it happens,
+and get explicit confirmation before anything irreversible.

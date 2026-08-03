@@ -1,0 +1,25 @@
+{
+  "enabled": true,
+  "recruitGuildId": "PUT_YOUR_DISCORD_SERVER_ID_HERE",
+  "clanName": "PUT_YOUR_CLAN_NAME_HERE",
+  "channels": {
+    "welcomeChannelId": "",
+    "applyChannelId": "",
+    "memberChatChannelId": "",
+    "decisionsChannelId": "",
+    "publicDecisionsChannelId": "",
+    "decisionsLogChannelId": "",
+    "removalQueueChannelId": "",
+    "appealsChannelId": "",
+    "waitingListChannelId": "",
+    "feedbackChannelId": ""
+  },
+  "roles": {
+    "newArrivalRoleId": "",
+    "probationRoleId": "",
+    "removeRoleId": "",
+    "waitlistRoleId": ""
+  },
+  "warServer": { "inviteUrl": "PUT_YOUR_DISCORD_INVITE_URL_HERE" },
+  "welcomeImagePath": ""
+}

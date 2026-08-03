@@ -1,0 +1,9 @@
+node_modules/
+.env
+*.bak*
+*.log
+.pm2/
+dump.pm2
+data/*
+!data/.gitkeep
+kraken-metrics.csv
