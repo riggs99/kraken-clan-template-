@@ -75,6 +75,7 @@ See [docs/commands.md](docs/commands.md) for the current, full reference (`COMMA
 ## Docs
 - [docs/commands.md](docs/commands.md) — full, current command/feature reference (OPS + Recruit)
 - [docs/bot-startup.md](docs/bot-startup.md) — process management (start/stop/logs, season reset)
+- [docs/multi-clan-hosting.md](docs/multi-clan-hosting.md) — running this for multiple clans from one host, each in its own fully isolated instance
 - DEV.md — developer setup notes (partially legacy, see note in AGENTS.md)
 
 ## Recruit HQ Setup

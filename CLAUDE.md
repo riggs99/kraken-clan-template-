@@ -65,7 +65,8 @@ clan at once. That was considered and explicitly **not** chosen. This project
 is the simpler model: every clan gets its own fully isolated instance, own
 bot token, own database, no shared tenant state at all. Everything below
 reflects that simpler model — nothing here requires the tenant-ID/shared-DB
-rework that doc describes.)
+rework that doc describes. See `docs/multi-clan-hosting.md` for the actual
+one-host-many-clans hosting procedure this project is built around.)
 
 Everything below is **done and verified** (syntax, lint, module-import smoke
 test, `smoke-wiring.js` all pass — see the Verification checklist). The one
