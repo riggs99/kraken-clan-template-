@@ -253,6 +253,30 @@ yet:
 Step 5 is the only thing between this and a real handoff — everything that
 can be verified without a live Discord connection has been.
 
+### How to safely run step 5's live test
+
+Using the **original clan's real Clash Royale tag** for this test is fine,
+and actually better than a fresh empty clan — `CLAN_TAG` is just a read-only
+public API lookup, not something exclusive to kraken1, and real war/fame/deck
+history exercises the tier system and season reports properly instead of
+only the empty-state path (already separately verified above). What must
+stay separate is everything Discord- and storage-side:
+
+- **A different Discord bot application and a different (throwaway test)
+  Discord server** — not kraken1's real server. `/recruit-setup` will create
+  real roles/channels wherever it's pointed.
+- **A different Clash Royale API key** — same clan tag is fine, but the key
+  itself needs to be its own, bound to wherever this test actually runs, so
+  it isn't sharing a rate-limit budget with kraken1's key.
+- **This project's own `data/` folder** — already separate by construction
+  (a different folder entirely from kraken1's), so this one takes care of
+  itself as long as nothing is manually copied over from kraken1's `data/`.
+
+The simplest first test doesn't need real hosting infrastructure set up yet
+(see `docs/multi-clan-hosting.md` for that, once this passes) — running
+`node src/index.js` locally, in this folder, against a free throwaway Discord
+test server is enough to prove the genericized code actually works.
+
 ## Shared helpers — reuse these, don't reinvent them
 
 Identical to kraken1, since this is the same codebase:
