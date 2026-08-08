@@ -26,7 +26,7 @@ import { Client, GatewayIntentBits } from 'discord.js';
 import { HISTORY_PATH, acquireHistoryLock, releaseHistoryLock } from '../src/history.js';
 
 const DRY_RUN = process.env.DRY_RUN === '1';
-const DB_PATH = String(process.env.KRAKEN_DB_PATH ?? path.join(process.cwd(), 'data', 'kraken.db'));
+const DB_PATH = String(process.env.KRAKEN_DB_PATH || path.join(process.cwd(), 'data', 'kraken.db'));
 
 // Guild ID comes from the recruit config (same source the bot uses).
 const recruitConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'config', 'recruit.config.json'), 'utf8'));

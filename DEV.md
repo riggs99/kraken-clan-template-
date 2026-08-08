@@ -127,7 +127,7 @@ Fix:
 2) Start bot:
    - node src\index.js
 3) In the main clan server, test `/ops` — opens the Overview/War/Donations/Actions panel.
-4) If Recruit HQ is enabled, test recruit commands there — see [docs/commands.md](docs/commands.md) for the full list (`/apply`, `/status`, `/recruit-eval-now`, `/war-board`, etc.)
+4) If Recruit HQ is enabled, test recruit commands there — see [docs/commands.md](docs/commands.md) for the full list (`/apply`, `/status`, `/recruit-eval-now`, `/standings`, etc.)
 
 For production start/stop (Windows Task Scheduler, not `node src\index.js` directly), see [docs/bot-startup.md](docs/bot-startup.md).
 

@@ -21,7 +21,7 @@ export const WINDOW_OPTIONS = [1, 7, 14];
 export const PAGE_SIZE = 8;
 const PICKER_PAGE_SIZE = 25;
 const OPS_PANEL_BY_USER = new Map();
-const OPS_DB_PATH = String(process.env.KRAKEN_DB_PATH ?? path.join(process.cwd(), 'data', 'kraken.db'));
+const OPS_DB_PATH = String(process.env.KRAKEN_DB_PATH || path.join(process.cwd(), 'data', 'kraken.db'));
 export function getExpectedDecksPerDay() {
   try {
     const _db = new Database(OPS_DB_PATH);

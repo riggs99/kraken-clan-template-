@@ -66,7 +66,7 @@ export async function handleSettings(interaction, { db }) {
       thumbnailUrl: CLAN_BADGE_URL,
       header: '## 🐙 KRAKEN Settings Updated',
       blocks: [
-        `Expected decks per war day set to **${value}**.\n\nTakes effect on the next evaluator run and war-board refresh.`,
+        `Expected decks per war day set to **${value}**.\n\nTakes effect on the next evaluator run and standings refresh.`,
       ],
     });
     return interaction.reply({

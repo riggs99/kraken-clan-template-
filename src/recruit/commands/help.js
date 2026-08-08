@@ -35,7 +35,7 @@ export async function handleHelp(interaction, { db }) {
     blocks.push(
       [
         '**Leader tools**',
-        '`/war-board` — recommendation board for the whole roster: shows every tracked member\'s keep / watch / underwatch / boot-review status based on this week\'s war performance. Paginated.',
+        '`/standings` — recommendation board for the whole roster: shows every tracked member\'s keep / watch / underwatch / boot-review status based on this week\'s war performance. Paginated.',
         '`/recruit-eval-now` — runs a dry-run preview of the automatic weekly tier evaluation (what roles WOULD change) without applying anything — use it to sanity-check before the real evaluator runs.',
         '`/recruit-season-report` — posts the current season\'s top-5 (fame, wars played, donations) to the leader channel each time it runs. Doesn\'t change any data, but it does post publicly — run it when you want current standings visible, not just to check.',
         '`/recruit-season-reset` — ⚠️ the real season rollover: posts the final season report and starts a new season, after a confirm step. Run this when the season has actually ended. (KRAKEN also auto-posts a reminder to this channel on the first Monday of each month, since real CR seasons roughly follow that cadence — it\'s a nudge only, not automatic action.)',

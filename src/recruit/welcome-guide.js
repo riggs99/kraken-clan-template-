@@ -130,7 +130,7 @@ export function buildWelcomeGuideEmbeds(runtime, recruitConfig = null) {
           'So every war-week call is based on **real records** across all 50 members — not memory, not guesswork.',
           '',
           '`/war` → live pulse · who\'s playing **today**, week totals',
-          '`/war-board` → full roster · sorted by tier action',
+          '`/standings` → full roster · sorted by tier action',
           '`/ops` → health · donations · promote/demote signals',
           '',
           '_KRAKEN tracks. We confirm the hard calls._ ⚖️',

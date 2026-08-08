@@ -12,7 +12,7 @@ import { loadRecruitConfig } from '../src/config/loadConfig.js';
 import { cleanTag } from '../src/util.js';
 import Database from 'better-sqlite3';
 
-const DB_PATH = String(process.env.KRAKEN_DB_PATH ?? path.join(process.cwd(), 'data', 'kraken.db'));
+const DB_PATH = String(process.env.KRAKEN_DB_PATH || path.join(process.cwd(), 'data', 'kraken.db'));
 
 function pass(label, detail = '') {
   console.log(`[PASS] ${label}${detail ? ` — ${detail}` : ''}`);

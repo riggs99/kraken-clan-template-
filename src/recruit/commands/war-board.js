@@ -234,8 +234,8 @@ function warBoardPagingRow(page, totalPages, ownerId) {
 }
 
 export const command = {
-  name: 'war-board',
-  description: 'Leader war decision board with clear recommendations and context',
+  name: 'standings',
+  description: 'Full roster war standings — every member\'s tier status and recommended action',
 };
 
 export async function handleWarBoard(interaction, ctx, options = {}) {
@@ -252,7 +252,7 @@ export async function handleWarBoard(interaction, ctx, options = {}) {
 
   if (isComponent && interaction.user?.id && ownerId && interaction.user.id !== ownerId) {
     return interaction.reply({
-      content: 'This war-board panel belongs to someone else. Run `/war-board` to open your own.',
+      content: 'This standings panel belongs to someone else. Run `/standings` to open your own.',
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -498,7 +498,7 @@ export async function handleWarBoard(interaction, ctx, options = {}) {
       `On break: **${onBreakCount}** · Grace: **${graceCount}**`,
     ].join('\n');
 
-    // The direct answer to "show the best and worst performer" for the war board:
+    // The direct answer to "show the best and worst performer" for the standings board:
     // most reliable keeper vs. the most severe open item across boot/underwatch/watch.
     const bestPerformer = keepStable[0] ?? null;
     const worstPerformer = bootReview[0] ?? moveUnderwatch[0] ?? watchClosely[0] ?? null;
@@ -549,7 +549,7 @@ export async function handleWarBoard(interaction, ctx, options = {}) {
       accentColor: color,
       thumbnailUrl: CLAN_BADGE_URL,
       header: [
-        `## 🐙 War Board — ${clanName}`,
+        `## 🐙 War Standings — ${clanName}`,
         descLines.join('\n'),
       ].join('\n'),
       blocks: [
@@ -568,6 +568,6 @@ export async function handleWarBoard(interaction, ctx, options = {}) {
     });
   } catch (e) {
     console.error('[WAR-BOARD] handler error:', e);
-    await interaction.editReply({ content: 'War board failed to load. Check logs.' });
+    await interaction.editReply({ content: 'Standings failed to load. Check logs.' });
   }
 }

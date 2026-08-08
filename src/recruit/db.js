@@ -10,7 +10,7 @@ function ensureParentDir(filePath) {
 }
 
 export function initDb() {
-  const dbPath = String(process.env.KRAKEN_DB_PATH ?? DEFAULT_DB_PATH);
+  const dbPath = String(process.env.KRAKEN_DB_PATH || DEFAULT_DB_PATH);
   ensureParentDir(dbPath);
 
   const db = new Database(dbPath);

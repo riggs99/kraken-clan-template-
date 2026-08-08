@@ -59,7 +59,7 @@ Displays one of:
 
 ---
 
-### `/war-board`
+### `/standings`
 
 **Who can use:** Leaders / Admin only
 **Channel:** Recruit HQ (ops channel)
@@ -205,7 +205,7 @@ Slash-command fallback for submitting an appeal against a KRAKEN tier decision (
 View or change recruit policy settings stored in SQLite.
 
 - `/recruit-settings view` — shows current settings (currently: expected decks per war day)
-- `/recruit-settings set-decks-per-day value:<1-10>` — changes the expected decks-per-war-day used by the evaluator, `/ops`, and `/war-board`. Takes effect on the next eval/refresh, no restart needed.
+- `/recruit-settings set-decks-per-day value:<1-10>` — changes the expected decks-per-war-day used by the evaluator, `/ops`, and `/standings`. Takes effect on the next eval/refresh, no restart needed.
 
 ---
 
@@ -272,7 +272,7 @@ Handles new arrivals when the clan is full (or a player joins the Discord before
 
 Separate from the server-leave grace break above. Controlled by `GRACE_DAYS` in `.env`.
 
-- **During training days** before war starts: recently linked members stay in grace — held on `/war-board`, OPS weak-range demotions suppressed, risk softened.
+- **During training days** before war starts: recently linked members stay in grace — held on `/standings`, OPS weak-range demotions suppressed, risk softened.
 - **When war goes live**: grace ends for everyone already in the clan at war start (including after a season reset — `trackingEpoch` in `history.json` prevents a restamped roster from being held in grace).
 - **Mid-war joiners**: members whose `firstSeen` is after the first war day of the current week keep grace until their window expires.
 - Grace never stops snapshot tracking — it only affects judgment holds and OPS/eval overrides.

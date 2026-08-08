@@ -39,7 +39,7 @@ const db = getRecruitDb();
 // forces everything out of the -wal file into the main .db before the copy, so
 // the snapshot is consistent even while the bot is actively writing.
 if (!dryRun) {
-  const dbPath = String(process.env.KRAKEN_DB_PATH ?? path.join(process.cwd(), 'data', 'kraken.db'));
+  const dbPath = String(process.env.KRAKEN_DB_PATH || path.join(process.cwd(), 'data', 'kraken.db'));
   db.pragma('wal_checkpoint(TRUNCATE)');
   const backupPath = dbPath.replace('.db', `.backup-before-welcome-blast-${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
   fs.copyFileSync(dbPath, backupPath);

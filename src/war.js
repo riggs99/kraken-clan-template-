@@ -95,7 +95,7 @@ function warPagingRow(state, paging) {
 }
 
 // Same numbered-line density as the rest of this view (Missing War Today, Boat
-// Actions) — capped at 5 with a pointer to /war-board rather than a second
+// Actions) — capped at 5 with a pointer to /standings rather than a second
 // incomplete copy of its fully-paginated decision board.
 function bucketLines(rows) {
   return rows.slice(0, 5).map((r, i) => {
