@@ -8,9 +8,15 @@ KRAKEN is a private Discord bot for Clash Royale clan management, spanning two g
 - Role-based access, channel locking, caching + cooldowns, circuit breaker for API stability
 - River Race reminders exist in code but are currently disabled (noisy, low value)
 
+## Setup
+
+**New here? Follow [SETUP.md](SETUP.md)** — the complete, current guide from
+creating the bot to a working server (`/recruit-setup`, members joining, role
+hierarchy, and the `npm run setup-check` pre-flight verifier). The quick notes
+below are a summary; SETUP.md is authoritative where they differ.
+
 ## Requirements
-- Windows + PowerShell
-- Node.js v20+
+- Node.js v20+ (Windows, macOS, or Linux)
 - A Discord Application + Bot token
 - Clash Royale API token (used via RoyaleAPI proxy)
 
@@ -73,6 +79,8 @@ See [docs/commands.md](docs/commands.md) for the current, full reference (`COMMA
 - No tokens or IDs should be present in source code
 
 ## Docs
+- [SETUP.md](SETUP.md) — complete first-time setup guide (start here)
+- [DEPLOYMENT.md](DEPLOYMENT.md) — running an instance in production (updates, backups, ops)
 - [docs/commands.md](docs/commands.md) — full, current command/feature reference (OPS + Recruit)
 - [docs/bot-startup.md](docs/bot-startup.md) — process management (start/stop/logs, season reset)
 - [docs/multi-clan-hosting.md](docs/multi-clan-hosting.md) — running this for multiple clans from one host, each in its own fully isolated instance

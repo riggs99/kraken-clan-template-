@@ -95,7 +95,12 @@ export async function verifyTagInCurrentClan(tag) {
     if (!match) {
       return { ok: false, code: 'TAG_NOT_IN_CLAN' };
     }
-    return { ok: true, memberName: String(match?.name ?? '').trim() || null };
+    return {
+      ok: true,
+      memberName: String(match?.name ?? '').trim() || null,
+      // CR API clan roles: 'member' | 'elder' | 'coLeader' | 'leader'. Lowercased for comparison.
+      clanRole: String(match?.role ?? '').trim().toLowerCase() || null,
+    };
   } catch {
     return { ok: false, code: 'CLAN_LOOKUP_FAILED' };
   }
@@ -232,6 +237,7 @@ export async function applyCore(interaction, ctx, input) {
 
   const memberRoleId = String(runtime?.roles?.memberRoleId ?? '');
   const probationRoleId = String(runtime?.roles?.probationRoleId ?? '');
+  const leadersRoleId = String(runtime?.roles?.leadersRoleId ?? '');
   if (!isValidDiscordId(memberRoleId) || !isValidDiscordId(probationRoleId)) {
     return interaction.reply({
       content: 'Recruit is not set up yet (missing role IDs). Ask an admin to run `/recruit-setup`.',
@@ -353,6 +359,14 @@ export async function applyCore(interaction, ctx, input) {
 
   // Do not write trial_ledger yet; the trial hasn't been judged.
 
+  // In-game co-leaders/leaders get the Discord leaders role automatically. This is best-effort
+  // and separate from the baseline grant below: the leaders role sits high in the hierarchy, so
+  // if it's positioned above the bot the grant fails — but that must never block a member's core
+  // onboarding, so it's attempted on its own and the outcome is just reported to leaders.
+  const isClanLeader = ['leader', 'coleader'].includes(String(clanVerification.clanRole ?? '').toLowerCase());
+  let leadersGranted = false;
+  let leadersGrantAttempted = false;
+
   let rolesGranted = false;
   let roleError = null;
   try {
@@ -378,10 +392,26 @@ export async function applyCore(interaction, ctx, input) {
     const result = await applyRolesVerified(member, { add, remove, reason: 'KRAKEN onboarding: baseline access' });
     rolesGranted = result.ok;
 
+    if (isClanLeader && isValidDiscordId(leadersRoleId) && !member.roles.cache.has(leadersRoleId)) {
+      leadersGrantAttempted = true;
+      const leadersResult = await applyRolesVerified(member, { add: leadersRoleId, reason: 'KRAKEN onboarding: in-game co-leader/leader' });
+      leadersGranted = leadersResult.ok;
+    }
+
     // Remove waitlist DB entry now that they've applied through the clan.
     removeFromWaitlist(db, String(interaction.user.id));
   } catch (e) {
     roleError = e;
+  }
+
+  // Report the leaders auto-grant outcome so a leader/owner has visibility — especially the
+  // failure case, which almost always means the leaders role sits above the bot in the role list.
+  if (leadersGrantAttempted) {
+    const who = clanVerification.memberName ?? interaction.user.username;
+    const note = leadersGranted
+      ? `🛡️ **${who}** (#${tag}) is a co-leader/leader in-game — **leaders** role granted automatically.`
+      : `🛡️ **${who}** (#${tag}) is a co-leader/leader in-game, but KRAKEN could not auto-grant the **leaders** role. Drag the leaders role **below** the bot's role in Server Settings → Roles, or grant it manually.`;
+    await safeSendToChannel(interaction.client, runtime?.channels?.decisionsChannelId ?? runtime?.channels?.decisionsLogChannelId, note, runtime?.channels?.decisionsLogChannelId, 'Recruit leaders auto-grant');
   }
 
   if (!rolesGranted) {

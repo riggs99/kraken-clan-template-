@@ -9,7 +9,8 @@
     "lint:fix": "eslint src/**/*.js scripts/**/*.js --fix",
     "test": "echo \"Error: no test specified\" && exit 1",
     "check": "node --check src/index.js && node --check src/cr-api.js",
-    "smoke:wiring": "node scripts/smoke-wiring.js"
+    "smoke:wiring": "node scripts/smoke-wiring.js",
+    "setup-check": "node scripts/setup-check.js"
   },
   "keywords": [],
   "author": "",

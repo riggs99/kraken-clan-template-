@@ -172,7 +172,7 @@ Use this when the channel gets cluttered, after a server restructure, or to forc
 
 One-time setup command that wires up the entire Recruit HQ server.
 
-- Creates or finds all required channels: `#welcome`, `#kraken-decisions`, `#kraken-decisions-public`, `#on-a-break`, `#kraken-ops`, `#logs`, `#removal-queue`
+- Creates or finds all required channels: `#welcome`, `#kraken-decisions` (public summary), `#kraken-decisions-leaders` (private log), `#on-a-break`, `#kraken-ops`, `#logs`, `#removal-queue` — the leaders-only channels are grouped under a "leaders" category
 - Creates or finds all required roles: `probation`, `new-arrival`, `kraken-member`, `kraken-warcore`, `kraken-underwatch`, `on a break`, `remove`, `leaders`
 - Sets correct permissions on every channel (members read-only, bot can post, leaders can post)
 - Stores all channel and role IDs in SQLite (`kraken.db`) for the evaluator and other systems to use
