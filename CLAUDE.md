@@ -55,7 +55,7 @@ files that were sitting in kraken1's `src/`.
   a mistake here doesn't just break one bot, it becomes the mistake every
   future clan's copy inherits.
 
-## Genericization status — done, verified, ready for a real deployment test
+## Genericization status — done, verified, and live-tested on a real server
 
 This was produced by a three-angle audit of kraken1 (hardcoded-value hunt,
 guardrail-portability check, crash-recovery trace) plus cross-referencing
@@ -69,9 +69,9 @@ rework that doc describes. See `docs/multi-clan-hosting.md` for the actual
 one-host-many-clans hosting procedure this project is built around.)
 
 Everything below is **done and verified** (syntax, lint, module-import smoke
-test, `smoke-wiring.js` all pass — see the Verification checklist). The one
-thing that genuinely can't be verified without a real deployment is noted at
-the end.
+test, `smoke-wiring.js` all pass — see the Verification checklist) **and has now
+been live-tested end to end on a real throwaway Discord server** (step 5 below —
+the one thing that previously couldn't be checked without a live connection).
 
 ### 1. Hardcoded clan identity — extracted into config ✅
 
@@ -243,15 +243,25 @@ yet:
 4. ✅ `node scripts/smoke-wiring.js` — same two-pass approach: 6/8 pass against
    the real placeholder config (2 fail *only* because of the intentional
    `PUT_*` guard, which is correct), all 8/8 pass with temporary dummy config.
-5. ⬜ **Still needed, and can't be faked**: once real credentials exist for an
-   actual test clan/server, start the bot for real, confirm a clean `KRAKEN
-   ONLINE` with no errors, run `/recruit-setup` against a real Discord server,
-   and confirm every channel/role it creates and every message it sends is
-   correctly generic — no original clan name, no original clan badge, no
-   leftover real Discord IDs anywhere.
+5. ✅ **Live-tested against a real throwaway test server** (2026-08-08). A
+   separate test Discord bot + throwaway server + its own CR API key (pointed at
+   a real clan tag) were stood up per the guidance below. Confirmed: clean
+   `KRAKEN ONLINE` boot, `/recruit-setup` builds the whole server correctly and
+   generically (no original clan name/badge/IDs anywhere), and `/apply` onboards
+   a real member end to end. Config was reverted to `PUT_*` placeholders and the
+   repo re-scanned clean (no secrets/real IDs) before committing.
 
-Step 5 is the only thing between this and a real handoff — everything that
-can be verified without a live Discord connection has been.
+   The live test also surfaced and fixed real issues, all committed: a new
+   `npm run setup-check` pre-flight verifier; `/recruit-setup` hardening
+   (leaders category grouping, ID-first channel/role resolution so a rename can
+   never scramble an existing server, public/private decisions split, role
+   hoisting + safe ordering, a role-hierarchy warning, and a guard against ever
+   flipping a pre-existing private channel public); automatic `leaders`-role
+   grant for in-game co-leaders/leaders on `/apply`; and refreshed setup docs
+   (`SETUP.md` is now the authoritative guide).
+
+All five steps are done — the template has been genuinely deployed and exercised
+on a live Discord server, not just verified offline.
 
 ### How to safely run step 5's live test
 
