@@ -62,6 +62,10 @@ export async function handleHelp(interaction, { db }) {
     );
   }
 
+  blocks.push(
+    '_KRAKEN is unofficial fan content and is not affiliated with, endorsed, sponsored, or specifically approved by Supercell. See Supercell\'s Fan Content Policy._',
+  );
+
   const container = buildDashboardContainer({
     accentColor: STATUS_COLORS.neutral,
     thumbnailUrl: CLAN_BADGE_URL,
