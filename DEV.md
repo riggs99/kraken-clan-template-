@@ -3,9 +3,9 @@
 Private Discord bot for Clash Royale clan intel.
 
 ## Tech
-- Node.js v20+
-- Windows + PowerShell
+- Node.js v20+ (Windows, macOS, or Linux)
 - discord.js v14 (ESM)
+- better-sqlite3
 - dotenv
 - node-fetch
 - Clash Royale API via: https://proxy.royaleapi.dev
@@ -27,9 +27,10 @@ Private Discord bot for Clash Royale clan intel.
     - commands.md           (current command/feature reference — start here)
     - bot-startup.md        (process management: Task Scheduler, season reset)
   - scripts\
-    - deploy-commands.js, kraken-boot.ps1, kraken-stop.ps1, season-reset.js, full-clan-reset.js
+    - deploy-commands.js, setup-check.js (pre-flight verifier), kraken-boot.ps1, kraken-stop.ps1, season-reset.js, full-clan-reset.js
   - .env (NOT COMMITTED)
-  - AGENTS.md, DEV.md, COMMANDS.md (legacy, see AGENTS.md note)
+  - SETUP.md (first-time setup), DEPLOYMENT.md (production/ops), AGENTS.md, DEV.md
+  - COMMANDS.md (intentionally legacy — points to docs/commands.md)
 
 ## Secrets Policy (Non-Negotiable)
 - DO NOT hardcode tokens or IDs in code.
@@ -37,53 +38,36 @@ Private Discord bot for Clash Royale clan intel.
 - .env must be in .gitignore.
 - Share code using .env.example (never share real .env).
 
-## Required Environment Variables (.env)
-Discord:
-- DISCORD_TOKEN=
-- DISCORD_APP_ID=
-- DISCORD_GUILD_ID=
-- LEADER_CHANNEL_ID=        (the channel ID for #kraken output / scheduler posts)
-Access control:
-- ALLOWED_ROLE_IDS=         (comma-separated role IDs; the “kraken” role)
-Clash Royale:
-- CR_API_TOKEN=
-- CR_API_BASE=https://proxy.royaleapi.dev
-Clan:
-- CLAN_TAG=                 (WITHOUT #)
-
-Optional circuit breaker tuning:
-- CR_BREAKER_WINDOW_MS=60000
-- CR_BREAKER_THRESHOLD=5
-- CR_BREAKER_OPEN_MS=600000
+## Environment Variables (.env)
+Every variable the bot reads is documented inline in `.env.example`, with its
+default and what it controls — that's the single source of truth, not a copy
+here that can drift out of sync. Required at minimum: `DISCORD_TOKEN`,
+`DISCORD_APP_ID`, `DISCORD_GUILD_ID`, `CR_API_BASE`, `CR_API_TOKEN`,
+`CLAN_TAG`. Notably: `KRAKEN_DB_PATH` — leave it unset (the default) unless
+you have a specific reason to change it. An *empty string* value (rather
+than truly unset) used to silently make the database temporary and wiped on
+every restart — fixed, but worth knowing why that variable matters.
 
 ## Install
 From project root:
-- C:/path/to/kraken-clan-template
-
-PowerShell:
 - npm install
 
 ## Deploy Slash Commands (Guild scoped)
-PowerShell:
-- node C:/path/to/kraken-clan-template\scripts\deploy-commands.js
+- npm run deploy
 
 Expected:
 - ✅ Commands deployed
 
 ## Run Bot
-PowerShell:
-- node C:/path/to/kraken-clan-template\src\index.js
+- npm start
 
 Expected:
 - 🐙 KRAKEN ONLINE as <bot#tag>
 
 ## Runtime Security Model
-All commands require:
-1) Correct Discord Guild (DISCORD_GUILD_ID)
-2) Correct Channel (LEADER_CHANNEL_ID)
-3) User has an allowed role from ALLOWED_ROLE_IDS
-
-Default is deny (fail-closed).
+Fail-closed (default deny), two layers:
+1) **Guild scoping** — commands only respond in their configured guild (`DISCORD_GUILD_ID` for OPS, `recruitGuildId` for Recruit).
+2) **Role checks** — Recruit commands use `isLeaderOrAdmin` (`src/permissions.js`): Discord Administrator, or the `leaders` role `/recruit-setup` creates. OPS additionally supports the optional `ALLOWED_ROLE_IDS` + `LEADER_CHANNEL_ID` lock.
 
 ## API Safety
 KRAKEN uses:
@@ -111,7 +95,7 @@ Fix:
 ### ERR_MODULE_NOT_FOUND
 Cause: missing file on disk or wrong import name.
 Fix:
-- Confirm file exists in C:/path/to/kraken-clan-template\src\
+- Confirm the file exists in `src/`
 - Confirm import uses correct filename (case-sensitive in ESM environments).
 
 ### CR API failures / breaker open
@@ -123,18 +107,22 @@ Fix:
 
 ## Recommended Local Test Flow
 1) Deploy commands:
-   - node scripts\deploy-commands.js
+   - npm run deploy
 2) Start bot:
-   - node src\index.js
+   - npm start
 3) In the main clan server, test `/ops` — opens the Overview/War/Donations/Actions panel.
 4) If Recruit HQ is enabled, test recruit commands there — see [docs/commands.md](docs/commands.md) for the full list (`/apply`, `/status`, `/recruit-eval-now`, `/standings`, etc.)
 
-For production start/stop (Windows Task Scheduler, not `node src\index.js` directly), see [docs/bot-startup.md](docs/bot-startup.md).
+For production start/stop, see [DEPLOYMENT.md](DEPLOYMENT.md) (PM2 on Linux is the proven production model) or [docs/bot-startup.md](docs/bot-startup.md) for local Windows Task Scheduler.
 
-## Notes for Future Public Release (Later)
-When ready to release beyond a single clan:
-- Move clan tag + role + channel into per-guild config (setup command)
-- Keep only global secrets in .env (DISCORD_TOKEN, CR_API_TOKEN, CR_API_BASE)
-- Add a setup + admin permission model
+## Multi-Clan Model (Done)
+This template already supports "beyond a single clan" — via **isolated
+instances**, not a shared multi-tenant bot: each clan gets its own bot token,
+its own config, its own database, fully separate. See `SETUP.md` (one clan)
+and `docs/multi-clan-hosting.md` (running many from one host).
 
-(Do not do this until private testing is stable.)
+A genuinely shared, single-bot multi-tenant rebuild (one bot invited by every
+clan, per-guild config, isolated DB rows) was considered and deliberately
+**not** built — it's a much bigger, riskier project, only worth it once
+there's proven demand across many clans. If that day comes, treat it as its
+own careful, dedicated project — not an incremental add-on.

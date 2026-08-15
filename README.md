@@ -42,24 +42,22 @@ If commands fail to deploy with 403 Missing Access, the bot was invited without 
 ## Deploy Slash Commands
 Guild-scoped deploy:
 
-- node C:/path/to/kraken-clan-template\scripts\deploy-commands.js
+- npm run deploy
 
 Expected:
 - ✅ Commands deployed
 
 ## Run
-- node C:/path/to/kraken-clan-template\src\index.js
+- npm start
 
 Expected:
 - 🐙 KRAKEN ONLINE as <bot#tag>
 
 ## Security Model
-All commands are restricted to:
-- DISCORD_GUILD_ID (server lock)
-- LEADER_CHANNEL_ID (channel lock)
-- ALLOWED_ROLE_IDS (role lock; your kraken role)
+Two permission layers, both fail-closed (default deny):
 
-Default is deny.
+- **Guild lock** — every command is scoped to its own guild (`DISCORD_GUILD_ID` for OPS, `recruitGuildId` for Recruit) and simply doesn't respond outside it.
+- **Role checks** — Recruit commands gate on `isLeaderOrAdmin`: Discord Administrator, or the `leaders` role that `/recruit-setup` creates and manages (see `src/permissions.js`). The OPS-only surface additionally supports `ALLOWED_ROLE_IDS` + `LEADER_CHANNEL_ID` as an optional extra role/channel lock (see `DEPLOYMENT.md`), but it's not required — most permission control happens through the `leaders` role.
 
 ## Key Commands
 See [docs/commands.md](docs/commands.md) for the current, full reference (`COMMANDS.md` at the repo root is legacy and describes a command set that no longer exists).
@@ -84,11 +82,11 @@ See [docs/commands.md](docs/commands.md) for the current, full reference (`COMMA
 - [docs/commands.md](docs/commands.md) — full, current command/feature reference (OPS + Recruit)
 - [docs/bot-startup.md](docs/bot-startup.md) — process management (start/stop/logs, season reset)
 - [docs/multi-clan-hosting.md](docs/multi-clan-hosting.md) — running this for multiple clans from one host, each in its own fully isolated instance
-- DEV.md — developer setup notes (partially legacy, see note in AGENTS.md)
+- DEV.md — developer setup notes (tech stack, project layout, troubleshooting)
 
 ## Recruit HQ Setup
 
-Recruit runs in a second, separate Discord server ("Recruit HQ") and is entirely optional — set `"enabled": false` in `config/recruit.config.json` to run OPS-only.
+Recruit is entirely optional — set `"enabled": false` in `config/recruit.config.json` to run OPS-only. It can run in the **same server** as OPS (the common case — `opsGuildId` and `recruitGuildId` set to the same server ID, exactly what `SETUP.md` walks through) or a **separate** "Recruit HQ" server if you want them split — it's a config choice, not a requirement.
 
 - Both `config/ops.config.json` and `config/recruit.config.json` must have their guild IDs (and any placeholder values) filled in before startup, or the bot fails fast with a config error.
 - Run `/recruit-setup` once in Recruit HQ (server owner/admin only) to create the required channels and roles and store their IDs in SQLite.

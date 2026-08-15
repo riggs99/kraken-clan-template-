@@ -14,13 +14,10 @@ Ship reliable changes for KRAKEN with zero OPS regressions and predictable Recru
 5. Keep recruit logic isolated under `src/recruit/` whenever possible.
 6. No unrelated refactors, renames, or formatting-only churn.
 
-## Branch Workflow (Mandatory)
-- Work only on a feature branch from `main`.
-- After successful merge/push:
-  - delete merged feature branch (local)
-  - delete merged feature branch (remote if it exists)
-  - create a new fresh feature branch
-- Keep branch set minimal: `main` + current active branch.
+## Branch Workflow
+- Default: commit directly to `main` — but only when the user explicitly approves each commit/push. Never commit or push unprompted.
+- For a larger, riskier change (e.g. a multi-tenant rebuild), use a feature branch if the user asks for one — not a blanket requirement.
+- Keep the branch set minimal either way.
 
 ## Recruit/OPS Sync Rules
 - All recruit role moves and decisions must post to configured decisions channel.
@@ -41,7 +38,7 @@ Ship reliable changes for KRAKEN with zero OPS regressions and predictable Recru
 1. Read relevant files first.
 2. Patch minimal root cause.
 3. Run syntax checks on changed files.
-4. **If changes touch runtime** (`src/`, `scripts/kraken-*.ps1`, `package.json`): restart with `scripts/kraken-restart.ps1` and confirm `scripts/kraken-verify.ps1` passes (bot online + heartbeat in log) **before committing**.
+4. **If changes touch runtime** (`src/`, `scripts/`, `package.json`): restart the bot and confirm a clean `KRAKEN ONLINE` with no errors in the logs **before committing** — via PM2 on Linux, or `scripts/kraken-restart.ps1` + `scripts/kraken-verify.ps1` for local Windows dev.
 5. Report:
    - what changed
    - why
@@ -54,14 +51,15 @@ Ship reliable changes for KRAKEN with zero OPS regressions and predictable Recru
 - Provide copy-paste PowerShell commands for next actions.
 
 ## Docs
+- `SETUP.md` is the authoritative first-time setup guide (start here for any new clan).
+- `DEPLOYMENT.md` is the canonical production/ops reference (PM2, updates, backups).
 - `docs/commands.md` is the living, accurate command/feature reference (slash commands, panels, waitlist, appeals, server-leave grace period, automated behaviour). Keep it updated when behavior changes.
-- `docs/bot-startup.md` is the canonical process-management reference.
-- `README.md`, `COMMANDS.md`, `DEPLOYMENT.md`, `DEV.md` predate the multi-guild recruit system and may still describe legacy single-guild commands — verify against actual code (`src/`) before trusting them for anything Recruit-related.
+- `docs/multi-clan-hosting.md` covers running many isolated clan instances from one host.
+- `COMMANDS.md` is intentionally legacy (a pointer to `docs/commands.md`) — leave it as-is.
+- `README.md` and `DEV.md` were brought up to date alongside this file — still worth a quick cross-check against actual code (`src/`) after any significant behavior change, since docs can drift.
 
-## Windows/Process Management
-- The bot runs via **Windows Task Scheduler** (task name `KrakenBot`), not PM2. PM2 was removed — its named-pipe IPC returns `EPERM` on this machine and cannot be fixed.
-- **Restart:** `scripts/kraken-restart.ps1` (stop → re-enable task → start → wait for `KRAKEN ONLINE` + heartbeat). **Verify:** `scripts/kraken-verify.ps1`. Full reference: `docs/bot-startup.md`.
-- `kraken-stop.ps1` disables the task — never use `Start-ScheduledTask` alone after a stop without `Enable-ScheduledTask` first.
-- **Never commit runtime changes** unless `kraken-verify.ps1` passes. Install `scripts/install-git-hooks.ps1` once per clone to enforce via pre-commit.
+## Process Management
+- **Production (any real clan deployment):** PM2, on Linux — proven working (`pm2 start src/index.js --name <clan>`, `pm2 save`, `pm2 startup`). See `SETUP.md` and `DEPLOYMENT.md`. PM2 works fine on Linux; a Windows-specific `EPERM` named-pipe issue only affects PM2 *on Windows* and does not apply to Linux hosting.
+- **Local Windows dev/testing:** the `scripts/kraken-*.ps1` scripts (`kraken-boot`, `kraken-stop`, `kraken-restart`, `kraken-verify`) remain available for running/testing on a local Windows machine via Task Scheduler — a dev convenience, not the production model.
 - Provide stepwise commands.
-- If a command fails, provide immediate diagnostic next command.
+- If a command fails, provide the immediate diagnostic next command.
