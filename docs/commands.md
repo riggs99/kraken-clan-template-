@@ -8,6 +8,7 @@ Commands are guild-scoped. Recruit commands only appear in **Recruit HQ**; `/ops
 
 **Available in:** Main clan server + Recruit HQ (leaders only)
 **Who can use:** Anyone with the `kraken` role (main server) or the `leaders` role (Recruit HQ)
+**Channel:** In Recruit HQ, locked to the ops channel `/recruit-setup` creates (`#kraken-ops`) — running it elsewhere in Recruit HQ gets rejected (the error message says "missing role," but a wrong channel is the more common cause).
 
 The single entry point for all clan management. Opens an interactive panel with four tabs:
 
@@ -19,6 +20,22 @@ The single entry point for all clan management. Opens an interactive panel with 
 | **Actions** | Promotion/demotion recommendations, discipline flags, reward candidates |
 
 Use the dropdown and buttons inside the panel to navigate pages and switch tabs.
+
+---
+
+## `/war` — Standalone War Hub
+
+**Available in:** Main clan server + Recruit HQ (leaders only)
+**Who can use:** Same as `/ops` — the `kraken` role (main server) or the `leaders` role (Recruit HQ)
+**Channel:** Same restriction as `/ops` — locked to `#kraken-ops` in Recruit HQ.
+
+The War tab of `/ops`, pulled out as its own dedicated command — for a quick war-day check without opening the full dashboard. It shares the same underlying data as `/ops`'s War tab. Shows:
+
+- Live river race leaders and current war performance
+- Per-member deck usage, participation, and missed war days
+- A summary of tier decisions (promote/watch/underwatch/boot counts), with the top few of each bucket — for the full, paginated per-member decision board, use `/standings` instead
+
+Same window/page controls as `/ops`'s War tab (refresh, day-range buttons, pagination).
 
 ---
 

@@ -3,7 +3,7 @@
 [![discord.js](https://img.shields.io/badge/discord.js-v14-blue)](https://discord.js.org/)
 
 KRAKEN is a private Discord bot for Clash Royale clan management, spanning two guild-scoped surfaces:
-- **Main clan server (OPS)**: `/ops` — a single tabbed command center for clan health, war stats, donations, and promotion/demotion/kick recommendations
+- **Main clan server (OPS)**: `/ops` — a single tabbed command center for clan health, war stats, donations, and promotion/demotion/kick recommendations; `/war` — a standalone war-day view pulled from the same data, for a quick check without opening the full dashboard
 - **Recruit HQ (Recruit)**: application intake, automated tier tracking (probation → warcore/underwatch → boot review), self-service breaks, appeals, and a fair-queue waitlist for when the clan is full — see [docs/commands.md](docs/commands.md) for the full reference
 - Role-based access, channel locking, caching + cooldowns, circuit breaker for API stability
 - River Race reminders exist in code but are currently disabled (noisy, low value)
