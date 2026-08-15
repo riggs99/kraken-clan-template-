@@ -666,6 +666,30 @@ async function sendSeasonRolloverReminder(client) {
       allowedMentions: { parse: [] },
     });
     console.log('[SCHEDULE] Season rollover reminder sent successfully');
+
+    // Also DM the server owner directly — they're the only one who can run
+    // /recruit-season-reset, and a channel post is easy to miss. Best-effort: a
+    // closed-DM owner or a fetch failure must never fail the reminder itself
+    // (the channel post above is the primary delivery and already succeeded).
+    try {
+      const guild = resolved.channel.guild;
+      const owner = await guild.fetchOwner();
+      await owner.user.send({
+        content: [
+          `📅 **KRAKEN Season Check-In — ${guild.name}**`,
+          '',
+          "It's the first Monday of the month, so the Clash Royale season has likely rolled over.",
+          'When you\'re ready, run `/recruit-season-reset` in your server to post the final season report and start the new season (there\'s a confirm step).',
+          'Run `/recruit-season-report` first if you want to preview the standings.',
+          '',
+          '_Reminder only — KRAKEN takes no action automatically._',
+        ].join('\n'),
+      });
+      console.log('[SCHEDULE] Season rollover reminder DM sent to owner');
+    } catch (dmErr) {
+      console.log('[SCHEDULE] Could not DM the owner the season reminder (DMs closed or fetch failed):', dmErr?.message ?? dmErr);
+    }
+
     return true;
   } catch (error) {
     console.error('[SCHEDULE] Error sending season rollover reminder:', error.message);
