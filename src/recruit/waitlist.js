@@ -216,12 +216,18 @@ export async function onMemberJoin(client, member, db) {
   const runtime = getRecruitRuntimeIds(db);
   const waitlistRoleId = String(runtime?.roles?.waitlistRoleId ?? '');
   const waitingListChannelId = String(runtime?.channels?.waitingListChannelId ?? '');
+  // Per-clan choice: auto-open queue (default, unchanged) vs leader-gated. When gated, a
+  // leader manually assigns the waitlist role to approve someone — handleWaitlistRoleChange
+  // (wired to GuildMemberUpdate) picks that up exactly the same way this auto-add does, so
+  // the rest of the waitlist system (queue order, pings, offers) needs no other changes.
+  const requiresApproval = Boolean(loadRecruitConfig()?.waitlistRequiresApproval);
 
   // DB first — role assignment also triggers addToWaitlist via GuildMemberUpdate, but ON CONFLICT DO NOTHING makes it safe.
-  addToWaitlist(db, discordId);
-
-  if (isValidDiscordId(waitlistRoleId)) {
-    await member.roles.add(waitlistRoleId, 'Auto-assigned on server join').catch(() => {});
+  if (!requiresApproval) {
+    addToWaitlist(db, discordId);
+    if (isValidDiscordId(waitlistRoleId)) {
+      await member.roles.add(waitlistRoleId, 'Auto-assigned on server join').catch(() => {});
+    }
   }
 
   // Check clan capacity to send the right DM
@@ -242,9 +248,15 @@ export async function onMemberJoin(client, member, db) {
     if (user) {
       const embed = clanFull
         ? new EmbedBuilder()
-            .setTitle("🐙 KRAKEN — You're on the Waitlist")
+            .setTitle(requiresApproval ? '🐙 KRAKEN — Clan Full' : "🐙 KRAKEN — You're on the Waitlist")
             .setColor(0xf1c40f)
-            .setDescription([
+            .setDescription(requiresApproval ? [
+              'Welcome to the KRAKEN server!',
+              '',
+              `The **${clanName}** clan is currently full.`,
+              '',
+              "Reach out to a leader if you'd like to be considered — they'll add you to the waitlist once approved. From there it's a fair queue, first approved, first offered.",
+            ].join('\n') : [
               'Welcome to the KRAKEN server!',
               '',
               `The **${clanName}** clan is currently full, but you've been added to the waitlist.`,
@@ -264,7 +276,9 @@ export async function onMemberJoin(client, member, db) {
               '',
               'Once you\'re in the clan, head to the welcome channel to complete your application.',
               '',
-              "You've been added to the waitlist in the meantime. Once you apply through the clan, your waitlist spot is no longer needed.",
+              requiresApproval
+                ? "If the clan's full when you're ready, ask a leader about the waitlist."
+                : "You've been added to the waitlist in the meantime. Once you apply through the clan, your waitlist spot is no longer needed.",
             ].join('\n'))
             .setFooter({ text: 'KRAKEN • welcome' });
 

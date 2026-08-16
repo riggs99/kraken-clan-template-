@@ -104,6 +104,15 @@ tell a clan to proceed until this checks out.
 
 - Each clan is a fully isolated instance — its own bot token, own config,
   own database. One clan's problem can never affect another's.
+- **`#waiting-list` and the `waitlist` role are optional and manual** —
+  `/recruit-setup` doesn't create them. If a clan wants the waitlist
+  feature, create the channel + role yourself, add their IDs to
+  `config/recruit.config.json` (`channels.waitingListChannelId`,
+  `roles.waitlistRoleId`), and restart. Worth asking the clan: **auto-open
+  queue** (anyone who joins the server gets added automatically — the
+  default) or **leader-gated** (set `waitlistRequiresApproval: true` in
+  their config — nobody's added until a leader manually assigns the
+  `waitlist` role to someone they've approved).
 - One VPS can comfortably host ~8 fully active clans on a 1GB box before
   resizing to 2GB is worth considering — see the sizing discussion in this
   project's history if you need the reasoning again.
