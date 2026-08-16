@@ -45,7 +45,7 @@ await runCheck('Recruit command set is unique', () => {
 
 await runCheck('Recruit command set contains expected entries', () => {
   const names = new Set(recruitCommands.map(command => command?.name));
-  for (const required of ['status', 'recruit-setup', 'recruit-eval-now', 'war-board']) {
+  for (const required of ['status', 'recruit-setup', 'recruit-eval-now', 'standings']) {
     assert(names.has(required), `missing command: ${required}`);
   }
 });
