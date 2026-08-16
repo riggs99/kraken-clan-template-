@@ -216,6 +216,14 @@ export async function onMemberJoin(client, member, db) {
   const runtime = getRecruitRuntimeIds(db);
   const waitlistRoleId = String(runtime?.roles?.waitlistRoleId ?? '');
   const waitingListChannelId = String(runtime?.channels?.waitingListChannelId ?? '');
+  const newArrivalRoleId = String(runtime?.roles?.newArrivalRoleId ?? '');
+
+  // Marks "hasn't applied yet" — independent of the waitlist question below.
+  // apply.js strips this role the moment someone successfully applies.
+  if (isValidDiscordId(newArrivalRoleId)) {
+    await member.roles.add(newArrivalRoleId, 'New member joined — pending application').catch(() => {});
+  }
+
   // Per-clan choice: auto-open queue (default, unchanged) vs leader-gated. When gated, a
   // leader manually assigns the waitlist role to approve someone — handleWaitlistRoleChange
   // (wired to GuildMemberUpdate) picks that up exactly the same way this auto-add does, so
