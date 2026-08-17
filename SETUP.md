@@ -158,15 +158,22 @@ In the server, as the **owner or an admin**, run `/recruit-setup` once. It
 builds the entire Recruit HQ automatically:
 
 **Channels**
-- `#welcome` — public landing + the "Agree & Join" onboarding panel
-- `#kraken-decisions` — public, member-facing decision summaries
-- `#on-a-break` — public break-request panel
+- `#welcome` — the only channel visible to everyone, including a
+  just-joined `new-arrival` who hasn't applied yet — public landing + the
+  "Agree & Join" onboarding panel
+- `#kraken-decisions` — members-only (`kraken-member` + `leaders`),
+  member-facing decision summaries
+- `#on-a-break` — members-only (`kraken-member` + `leaders`), break-request
+  panel
 - **leaders** category (leaders-only): `#kraken-decisions-leaders` (full
   internal decision log), `#kraken-ops`, `#logs`, `#removal-queue`
 - Member chat (optional, adopted by name-match on a channel called
-  `general`, or set explicitly via `channels.memberChatChannelId`) — gated
-  to `kraken-member` + `leaders` only, so `new-arrival` (joined but hasn't
-  applied yet) and waitlisted players can't see it
+  `general`, or set explicitly via `channels.memberChatChannelId`) —
+  members-only (`kraken-member` + `leaders`)
+
+`kraken-member` is granted to everyone the moment `/apply` succeeds,
+regardless of tier — so a `new-arrival` who hasn't applied, or someone
+sitting on the waitlist, sees only `#welcome` until they're actually in.
 
 **Roles** (created below the bot, in display order): `leaders`,
 `kraken-warcore`, `kraken-member`, `kraken-underwatch`, `probation`,

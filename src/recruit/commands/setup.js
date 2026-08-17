@@ -206,46 +206,53 @@ export async function handleSetup(interaction, ctx) {
   const configuredDecisionsChannel = await resolveTextChannelById(guild, configuredDecisionsId);
   const decisionsChannel = configuredDecisionsChannel ?? await findOrCreateTextChannelByIdOrName(guild, existing?.channels?.decisionsChannelId, 'kraken-decisions-leaders', decisionsOverwrites, leadersCategory.id);
 
-  // Public read-only channel for daily KRAKEN decisions (no pings).
+  // Read-only channel for daily KRAKEN decisions (no pings). Visible to actual members
+  // (kraken-member, granted the moment /apply succeeds) + leaders — not to new-arrival/
+  // waitlist, who haven't joined the clan yet and have nothing here to read about them.
   const publicDecisionsConfiguredId = String(recruitConfig?.channels?.publicDecisionsChannelId ?? '');
   const publicDecisionsConfigured = await resolveTextChannelById(guild, publicDecisionsConfiguredId);
   const publicDecisionsOverwrites = [
-    { id: everyoneId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
+    { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
     { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
+    { id: roleMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
     { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
   ];
   // Resolve the public channel by: configured ID > stored ID > a name match that is ALREADY
-  // public > a fresh channel. A name match that currently hides itself from @everyone is NEVER
-  // adopted — it would be an old leaders-only "kraken-decisions" from before the public/private
-  // split, and the re-affirm below would flip it public and leak its entire decision history to
-  // every member. In that case we create a fresh public channel and leave the private one alone.
+  // hidden from @everyone > a fresh channel. A name match that's currently wide open to
+  // @everyone is NEVER adopted here — it would be an old fully-public "kraken-decisions"
+  // from before the members-only gate, and the re-affirm below would need ViewChannel
+  // already denied for @everyone or it'd flip a channel we don't intend to touch. In that
+  // case we create a fresh members-gated channel and leave the old public one alone.
   let publicDecisionsChannel = publicDecisionsConfigured
     ?? await resolveTextChannelById(guild, existing?.channels?.publicDecisionsChannelId);
   if (!publicDecisionsChannel) {
     const byName = guild.channels.cache.find(c => c?.type === ChannelType.GuildText && c?.name === 'kraken-decisions') ?? null;
     const byNameHidesEveryone = Boolean(byName?.permissionOverwrites?.cache?.get(everyoneId)?.deny?.has(PermissionFlagsBits.ViewChannel));
-    publicDecisionsChannel = (byName && !byNameHidesEveryone)
+    publicDecisionsChannel = (byName && byNameHidesEveryone)
       ? byName
       : await guild.channels.create({ name: 'kraken-decisions', type: ChannelType.GuildText, permissionOverwrites: publicDecisionsOverwrites, reason: 'KRAKEN Recruit setup' });
   }
   try {
-    // Safe to re-affirm public overwrites + top-level placement now: publicDecisionsChannel is
-    // always either our own channel (resolved by ID), an already-public name match, or freshly
-    // created — never a currently-private channel.
+    // Safe to re-affirm overwrites + top-level placement now: publicDecisionsChannel is
+    // always either our own channel (resolved by ID), an already-gated name match, or
+    // freshly created — never a channel we adopted while it was still open to everyone.
     if (publicDecisionsChannel?.permissionOverwrites?.set) {
-      await publicDecisionsChannel.permissionOverwrites.set(publicDecisionsOverwrites, 'KRAKEN Recruit setup: enforce kraken-decisions (public) permissions');
+      await publicDecisionsChannel.permissionOverwrites.set(publicDecisionsOverwrites, 'KRAKEN Recruit setup: enforce kraken-decisions (members-only) permissions');
     }
     if (!publicDecisionsConfigured && publicDecisionsChannel?.parentId !== null) {
-      await publicDecisionsChannel.setParent(null, { lockPermissions: false, reason: 'KRAKEN Recruit setup: kraken-decisions is public, not a leaders-only channel' });
+      await publicDecisionsChannel.setParent(null, { lockPermissions: false, reason: 'KRAKEN Recruit setup: kraken-decisions is members-only, not a leaders-only channel' });
     }
   } catch {
     // ignore overwrite update failures
   }
 
-  // Public break request channel (read-only panel; breaks start immediately and leaders acknowledge in decisions).
+  // Break request channel (read-only panel; breaks start immediately and leaders acknowledge in
+  // decisions). Members-only, same reasoning as kraken-decisions above — a new-arrival who
+  // hasn't applied yet has no break to manage.
   const breakOverwrites = [
-    { id: everyoneId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
+    { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
     { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
+    { id: roleMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
     { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
   ];
   const onBreakChannel = await findOrCreateTextChannelByIdOrName(guild, existing?.channels?.onBreakChannelId, 'on-a-break', breakOverwrites);
