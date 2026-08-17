@@ -224,21 +224,8 @@ export async function onMemberJoin(client, member, db) {
     await member.roles.add(newArrivalRoleId, 'New member joined — pending application').catch(() => {});
   }
 
-  // Per-clan choice: auto-open queue (default, unchanged) vs leader-gated. When gated, a
-  // leader manually assigns the waitlist role to approve someone — handleWaitlistRoleChange
-  // (wired to GuildMemberUpdate) picks that up exactly the same way this auto-add does, so
-  // the rest of the waitlist system (queue order, pings, offers) needs no other changes.
-  const requiresApproval = Boolean(loadRecruitConfig()?.waitlistRequiresApproval);
-
-  // DB first — role assignment also triggers addToWaitlist via GuildMemberUpdate, but ON CONFLICT DO NOTHING makes it safe.
-  if (!requiresApproval) {
-    addToWaitlist(db, discordId);
-    if (isValidDiscordId(waitlistRoleId)) {
-      await member.roles.add(waitlistRoleId, 'Auto-assigned on server join').catch(() => {});
-    }
-  }
-
-  // Check clan capacity to send the right DM
+  // The waitlist only ever applies once the clan is actually at its 50-player cap — while
+  // there's an open slot, a new arrival just applies directly, no queue involved.
   let clanFull = false;
   const clanTag = String(process.env.CLAN_TAG ?? '').replace('#', '');
   if (clanTag) {
@@ -246,6 +233,21 @@ export async function onMemberJoin(client, member, db) {
       const clan = await getClan(clanTag);
       clanFull = Array.isArray(clan?.memberList) && clan.memberList.length >= 50;
     } catch { /* ignore */ }
+  }
+
+  // Per-clan choice, relevant only when the clan is actually full: auto-open queue (default)
+  // vs leader-gated. When gated, a leader manually assigns the waitlist role to approve
+  // someone — handleWaitlistRoleChange (wired to GuildMemberUpdate) picks that up exactly the
+  // same way this auto-add does, so the rest of the waitlist system (queue order, pings,
+  // offers) needs no other changes.
+  const requiresApproval = Boolean(loadRecruitConfig()?.waitlistRequiresApproval);
+
+  // DB first — role assignment also triggers addToWaitlist via GuildMemberUpdate, but ON CONFLICT DO NOTHING makes it safe.
+  if (clanFull && !requiresApproval) {
+    addToWaitlist(db, discordId);
+    if (isValidDiscordId(waitlistRoleId)) {
+      await member.roles.add(waitlistRoleId, 'Auto-assigned on server join — clan full').catch(() => {});
+    }
   }
 
   const channelMention = isValidDiscordId(waitingListChannelId) ? `<#${waitingListChannelId}>` : '#waiting-list';
@@ -284,9 +286,7 @@ export async function onMemberJoin(client, member, db) {
               '',
               'Once you\'re in the clan, head to the welcome channel to complete your application.',
               '',
-              requiresApproval
-                ? "If the clan's full when you're ready, ask a leader about the waitlist."
-                : "You've been added to the waitlist in the meantime. Once you apply through the clan, your waitlist spot is no longer needed.",
+              "If the clan happens to fill up before you're ready, ask a leader about the waitlist.",
             ].join('\n'))
             .setFooter({ text: 'KRAKEN • welcome' });
 
