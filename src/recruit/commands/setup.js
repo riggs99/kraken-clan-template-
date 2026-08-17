@@ -322,6 +322,23 @@ export async function handleSetup(interaction, ctx) {
     : ((await resolveTextChannelById(guild, existing?.channels?.memberChatChannelId)) ?? findTextChannelByPrefix(guild, 'general') ?? null);
   if (memberChatChannel?.id) {
     setRecruitSetting(db, 'channels.memberChatChannelId', memberChatChannel.id);
+    // Gate to actual members only — kraken-member is granted the moment /apply succeeds,
+    // regardless of tier, so this excludes new-arrival/waitlist without excluding anyone
+    // who's actually onboarded. Enforced every run so drift (e.g. a manual permission
+    // change) self-heals on re-setup, same as the other managed channels above.
+    const memberOnlyOverwrites = [
+      { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
+      { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
+      { id: roleMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+      { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+    ];
+    try {
+      if (memberChatChannel.permissionOverwrites?.set) {
+        await memberChatChannel.permissionOverwrites.set(memberOnlyOverwrites, 'KRAKEN Recruit setup: enforce member-chat permissions');
+      }
+    } catch {
+      // ignore overwrite update failures
+    }
   }
   setRecruitSetting(db, 'roles.leadersRoleId', roleLeaders.id);
   setRecruitSetting(db, 'roles.memberRoleId', roleMember.id);

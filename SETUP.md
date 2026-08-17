@@ -163,6 +163,10 @@ builds the entire Recruit HQ automatically:
 - `#on-a-break` — public break-request panel
 - **leaders** category (leaders-only): `#kraken-decisions-leaders` (full
   internal decision log), `#kraken-ops`, `#logs`, `#removal-queue`
+- Member chat (optional, adopted by name-match on a channel called
+  `general`, or set explicitly via `channels.memberChatChannelId`) — gated
+  to `kraken-member` + `leaders` only, so `new-arrival` (joined but hasn't
+  applied yet) and waitlisted players can't see it
 
 **Roles** (created below the bot, in display order): `leaders`,
 `kraken-warcore`, `kraken-member`, `kraken-underwatch`, `probation`,
