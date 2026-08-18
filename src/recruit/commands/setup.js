@@ -172,6 +172,13 @@ export async function handleSetup(interaction, ctx) {
   const guild = interaction.guild;
   if (!guild) return interaction.reply({ content: 'Guild not available.', flags: MessageFlags.Ephemeral });
 
+  // guild.members.me is a cache-only getter — it can be null right when the bot has just
+  // started, which is exactly when /recruit-setup is typically run for the first time on a
+  // freshly-invited bot. Fetched explicitly instead, same as every other member lookup in
+  // this codebase (permissions.js, evaluator.js, apply.js, etc.), so this and the role-
+  // hierarchy check further down are never gated on whatever happens to already be cached.
+  const botMember = await guild.members.fetch(interaction.client.user.id).catch(() => null);
+
   // The full set the invite link is supposed to grant (see docs/onboard-a-clan.md) — checked
   // here, not just the two most critical ones, so a partial/wrong invite fails clearly up
   // front instead of surfacing later as a silent per-channel permission gap. Uses the bot's
@@ -187,8 +194,7 @@ export async function handleSetup(interaction, ctx) {
     ['Read Message History', PermissionFlagsBits.ReadMessageHistory],
     ['Manage Messages', PermissionFlagsBits.ManageMessages],
   ];
-  const botGuildPermissions = guild.members.me?.permissions;
-  const missingBotPermissions = requiredBotPermissions.filter(([, flag]) => !botGuildPermissions?.has(flag));
+  const missingBotPermissions = requiredBotPermissions.filter(([, flag]) => !botMember?.permissions?.has(flag));
   if (missingBotPermissions.length > 0) {
     return interaction.reply({
       content: `KRAKEN is missing these permissions in this server: ${missingBotPermissions.map(([label]) => `**${label}**`).join(', ')}. Re-invite the bot with the full permission set from the setup guide, then run this again.`,
@@ -486,8 +492,8 @@ export async function handleSetup(interaction, ctx) {
   // so if a managed role sits above the bot (pre-existed higher, or an admin dragged it up),
   // onboarding's role grants silently fail. Surface it now with an exact fix rather than
   // letting /apply break later for a non-technical owner with no clue why.
-  const botHighestPosition = guild.members.me?.roles?.highest?.position ?? 0;
-  const botRoleName = guild.members.me?.roles?.botRole?.name ?? 'the bot';
+  const botHighestPosition = botMember?.roles?.highest?.position ?? 0;
+  const botRoleName = botMember?.roles?.botRole?.name ?? 'the bot';
   // roleLeaders is included: the bot auto-grants it to in-game co-leaders/leaders on /apply,
   // so it must sit below the bot too — otherwise that grant silently fails.
   const unassignableRoleNames = [roleNewArrival, roleMember, roleWarcore, roleUnderwatch, roleProbation, roleOnBreak, roleRemove, roleWaitlist, roleLeaders]
