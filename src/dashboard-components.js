@@ -185,17 +185,27 @@ export async function ensurePersistentPanel({ channel, existingId, payload, pin 
       await existing.edit(payload);
       return { message: existing, changed: false };
     } catch (e) {
-      const isV2Immutable = /COMPONENTS_V2/i.test(String(e?.message ?? e ?? ''));
-      if (!isV2Immutable) {
+      // A confirmed "Unknown Message" (10008) here is exactly as certain as the same
+      // code on the fetch above — the fetch can return a cached Message object without
+      // a true round-trip, so the first place this ever actually gets confirmed gone is
+      // sometimes the edit call itself, not the fetch. Treated as confirmed missing, not
+      // ambiguous/transient, so it doesn't get stuck silently stale forever.
+      const confirmedMissing = e?.code === 10008;
+      const isV2Immutable = !confirmedMissing && /COMPONENTS_V2/i.test(String(e?.message ?? e ?? ''));
+      if (!confirmedMissing && !isV2Immutable) {
         console.error(`${logPrefix}: edit failed (transient — leaving existing message as-is):`, String(e?.message ?? e));
         return { message: existing, changed: false };
       }
-      console.error(`${logPrefix}: edit failed (message predates Components V2, can't be edited into it) — deleting and re-sending:`, String(e?.message ?? e));
-      try {
-        await existing.delete();
-      } catch (delErr) {
-        console.error(`${logPrefix}: delete failed — leaving the stale message rather than risk a duplicate:`, String(delErr?.message ?? delErr));
-        return { message: existing, changed: false };
+      if (confirmedMissing) {
+        console.error(`${logPrefix}: edit failed (message confirmed deleted) — sending a replacement:`, String(e?.message ?? e));
+      } else {
+        console.error(`${logPrefix}: edit failed (message predates Components V2, can't be edited into it) — deleting and re-sending:`, String(e?.message ?? e));
+        try {
+          await existing.delete();
+        } catch (delErr) {
+          console.error(`${logPrefix}: delete failed — leaving the stale message rather than risk a duplicate:`, String(delErr?.message ?? delErr));
+          return { message: existing, changed: false };
+        }
       }
     }
   }
