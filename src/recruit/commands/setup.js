@@ -2,6 +2,7 @@ import { PermissionFlagsBits, ChannelType, MessageFlags } from 'discord.js';
 import { getRecruitRuntimeIds, setRecruitSetting } from '../db.js';
 import { ensureWelcomePost } from '../onboarding.js';
 import { ensureBreakPost } from '../breaks.js';
+import { ensureAppealsPost } from './appeal.js';
 import { isServerOwner } from '../../permissions.js';
 
 function isValidDiscordId(id) {
@@ -448,6 +449,25 @@ export async function handleSetup(interaction, ctx) {
   });
   setRecruitSetting(db, 'channels.waitingListChannelId', waitingListChannel.id);
 
+  // Appeals channel — read-only queue for members (they interact via the "Submit Appeal"
+  // button/modal, never by typing), same access pattern as #kraken-decisions/#on-a-break.
+  // Leaders' review cards (Overturn/Keep buttons) post into this same channel.
+  const appealsOnlyOverwrites = [
+    { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
+    { id: roleMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
+    { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+  ];
+  const appealsChannel = await findOrCreateManagedChannel(guild, {
+    configuredId: recruitConfig?.channels?.appealsChannelId,
+    storedId: existing?.channels?.appealsChannelId,
+    namePrefixes: ['appeals'],
+    createName: 'appeals',
+    overwrites: appealsOnlyOverwrites,
+    enforceReason: 'KRAKEN Recruit setup: enforce appeals permissions',
+  });
+  setRecruitSetting(db, 'channels.appealsChannelId', appealsChannel.id);
+
   setRecruitSetting(db, 'roles.leadersRoleId', roleLeaders.id);
   setRecruitSetting(db, 'roles.memberRoleId', roleMember.id);
   setRecruitSetting(db, 'roles.warcoreRoleId', roleWarcore.id);
@@ -466,6 +486,11 @@ export async function handleSetup(interaction, ctx) {
   }
   try {
     await ensureBreakPost(interaction.client, recruitConfig, db);
+  } catch {
+    // ignore
+  }
+  try {
+    await ensureAppealsPost(interaction.client, recruitConfig, db);
   } catch {
     // ignore
   }
@@ -514,6 +539,7 @@ export async function handleSetup(interaction, ctx) {
     `- member chat: <#${memberChatChannel.id}>`,
     `- leaders chat: <#${leadersChatChannel.id}>`,
     `- waiting-list: <#${waitingListChannel.id}>`,
+    `- appeals: <#${appealsChannel.id}>`,
     '',
     `Roles:`,
     `- probation: <@&${roleProbation.id}>`,

@@ -178,6 +178,10 @@ builds the entire Recruit HQ automatically:
 - `#waiting-list` — created if missing (or adopted by name-match on
   `waiting-list` / `waitlist`, or `channels.waitingListChannelId`) —
   read-only queue panel, gated to the `waitlist` role
+- `#appeals` — created if missing (or adopted by name-match /
+  `channels.appealsChannelId`) — read-only for members
+  (`kraken-member` + `leaders`), same pattern as `#kraken-decisions`;
+  members submit via the **Submit Appeal** button, never by typing
 
 `kraken-member` is granted to everyone the moment `/apply` succeeds,
 regardless of tier — so a `new-arrival` who hasn't applied, or someone

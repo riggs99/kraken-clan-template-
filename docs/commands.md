@@ -197,7 +197,7 @@ One-time setup command that wires up the entire Recruit HQ server.
 
 Run this once when setting up a new server. Safe to re-run — it refreshes IDs without breaking existing data.
 
-> Note: `#waiting-list` and the `waitlist` role are created automatically by `/recruit-setup`. `#appeals` is the one exception still left manual — its ID is stored directly in `config/recruit.config.json` (`channels.appealsChannelId`).
+> Note: `#waiting-list`, the `waitlist` role, and `#appeals` are all created automatically by `/recruit-setup`, same as every other channel/role above.
 
 ---
 
@@ -335,9 +335,9 @@ These fire on a schedule without any user action:
 | **Post-break escalation to Underwatch** | Daily, after break expiry | **Regular breaks**: escalate only after at least one *completed* war day has passed since expiry with zero war activity (so a break ending mid-training-week isn't unfairly judged, and a war day still in progress can still be played). **Server-leave grace breaks**: escalate immediately on expiry — the offense is not returning, war timing is irrelevant. |
 | **Waitlist weekly check-in / expiry** | Daily | DMs anyone 7+ days since joining/confirming who hasn't been pinged yet this cycle; removes anyone pinged 48+ hours ago with no confirmation. |
 | **New clan joiners report** | Daily (every eval tick, not just review days) | Posts a list of clan-roster members with no KRAKEN profile at all — no way to tell whether they're sitting in Recruit HQ unlinked or not on Discord at all, so it covers both. Only ever reports each tag once (persisted dedup set, not a date cutoff) — no repeats. Logged to the admin logs channel. |
-| **Welcome panel** | Bot startup | Ensures the `#welcome` panel exists and is pinned |
-| **Break panel** | Bot startup | Ensures the `#on-a-break` panel exists and is pinned |
-| **Appeals panel** | Bot startup | Ensures the `#appeals` panel exists and is pinned |
+| **Welcome panel** | Bot startup + `/recruit-setup` | Ensures the `#welcome` panel exists and is pinned |
+| **Break panel** | Bot startup + `/recruit-setup` | Ensures the `#on-a-break` panel exists and is pinned |
+| **Appeals panel** | Bot startup + `/recruit-setup` | Ensures the `#appeals` panel exists and is pinned |
 | **Waitlist panel** | Bot startup | Ensures the `#waiting-list` panel exists and is pinned, showing the current queue size |
 | **Daily / weekly clan reports** | Daily 20:00 UTC / Sunday 20:00 UTC | Posts the clan activity report and weekly promotion/demotion summary to the reports channel |
 
