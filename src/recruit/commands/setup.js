@@ -29,10 +29,30 @@ async function enforceHoist(role, hoist) {
   return role;
 }
 
+// Every KRAKEN role is a pure tag — access is granted entirely through the per-channel
+// overwrites elsewhere in this file, never through the role's own server-wide permissions.
+// Discord defaults a newly-created role's permissions to a COPY of @everyone's current
+// permissions (not zero), so without this, a role could silently pick up whatever baseline
+// @everyone happens to have. Enforced on every run, same as hoist above, so drift (a manual
+// permission toggle, or re-adopting a pre-existing role) self-heals on re-setup.
+async function enforcePermissions(role) {
+  if (role && role.permissions?.bitfield !== 0n) {
+    try {
+      await role.setPermissions([], 'KRAKEN Recruit setup: role carries no server-wide permissions of its own');
+    } catch {
+      // ignore permission update failures
+    }
+  }
+  return role;
+}
+
 async function findOrCreateRole(guild, name, hoist = false) {
   const existing = guild.roles.cache.find(r => r.name === name) ?? null;
-  if (existing) return enforceHoist(existing, hoist);
-  return guild.roles.create({ name, mentionable: false, hoist, reason: 'KRAKEN Recruit setup' });
+  if (existing) {
+    await enforceHoist(existing, hoist);
+    return enforcePermissions(existing);
+  }
+  return guild.roles.create({ name, mentionable: false, hoist, permissions: [], reason: 'KRAKEN Recruit setup' });
 }
 
 function rolesWithModPowers(guild) {
@@ -103,7 +123,10 @@ async function resolveRoleById(guild, roleId) {
 // versions; keying off the stored ID makes a rename affect only genuine first-time setups.
 async function findOrCreateRoleByIdOrName(guild, storedId, name, hoist = false) {
   const byId = await resolveRoleById(guild, storedId);
-  if (byId) return enforceHoist(byId, hoist);
+  if (byId) {
+    await enforceHoist(byId, hoist);
+    return enforcePermissions(byId);
+  }
   return findOrCreateRole(guild, name, hoist);
 }
 
