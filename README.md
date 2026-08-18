@@ -90,6 +90,6 @@ Recruit is entirely optional — set `"enabled": false` in `config/recruit.confi
 
 - Both `config/ops.config.json` and `config/recruit.config.json` must have their guild IDs (and any placeholder values) filled in before startup, or the bot fails fast with a config error.
 - Run `/recruit-setup` once in Recruit HQ (server owner/admin only) to create the required channels and roles and store their IDs in SQLite.
-- `#appeals`, `#waiting-list`, and the `waitlist` role are **not** created by `/recruit-setup` — they must be created manually and their IDs added to `config/recruit.config.json` (`channels.appealsChannelId`, `channels.waitingListChannelId`, `roles.waitlistRoleId`).
+- `#waiting-list` and the `waitlist` role are created automatically by `/recruit-setup`, same as everything else. `#appeals` is the one exception still left manual — create it yourself and add its ID to `config/recruit.config.json` (`channels.appealsChannelId`).
 - Recruit commands are hard-scoped to `recruitGuildId` and never appear in the main clan server; `/ops` is guild-scoped to `opsGuildId` and never appears in Recruit HQ (though it can also run in Recruit HQ for leaders — see docs/commands.md).
 

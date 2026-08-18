@@ -168,16 +168,16 @@ builds the entire Recruit HQ automatically:
 - **leaders** category (leaders-only): `#kraken-decisions-leaders` (full
   internal decision log), `#kraken-ops`, `#logs`, `#removal-queue` — these
   are all bot-managed data/log surfaces, not a place to actually chat
-- Member chat (optional, adopted by name-match on a channel called
-  `general`, or set explicitly via `channels.memberChatChannelId`) —
+- `#general` (member chat) — created if it doesn't already exist (or
+  adopted by name-match / `channels.memberChatChannelId`) —
   members-only (`kraken-member` + `leaders`)
-- Leaders chat (optional, adopted by name-match on `leaders-channel` /
-  `leaders-chat`, or set explicitly via `channels.leadersChatChannelId`) —
-  a plain leaders-only chat space, separate from the leaders category above
-- Waiting list (optional, adopted by name-match on `waiting-list` /
-  `waitlist`, or set explicitly via `channels.waitingListChannelId`) —
-  read-only queue panel; also gates in the `waitlist` role (`roles.waitlistRoleId`)
-  once it exists, but that role itself still isn't created automatically
+- `#leaders-chat` (plain leaders-only chat, separate from the leaders
+  category's bot-managed data/log channels above) — created if missing
+  (or adopted by name-match on `leaders-channel` / `leaders-chat`, or
+  `channels.leadersChatChannelId`)
+- `#waiting-list` — created if missing (or adopted by name-match on
+  `waiting-list` / `waitlist`, or `channels.waitingListChannelId`) —
+  read-only queue panel, gated to the `waitlist` role
 
 `kraken-member` is granted to everyone the moment `/apply` succeeds,
 regardless of tier — so a `new-arrival` who hasn't applied, or someone
@@ -191,8 +191,10 @@ itself. The bot's own role is the only exception; see
 
 **Roles** (created below the bot, in display order): `leaders`,
 `kraken-warcore`, `kraken-member`, `kraken-underwatch`, `probation`,
-`on a break`, `new-arrival`, `remove`. The standing roles are hoisted so
-members group by their standing in the sidebar.
+`on a break`, `new-arrival`, `waitlist`, `remove`. The standing roles are
+hoisted so members group by their standing in the sidebar. Every channel
+and role above is created and permission-enforced automatically — there
+are no manual permission steps left after running this command.
 
 It stores every channel/role ID in SQLite, so it's **safe to re-run** — it
 reuses what it already made (by ID, not name) and never creates duplicates. If
@@ -233,6 +235,7 @@ arrangement is:
   probation
   on a break
   new-arrival
+  waitlist
   remove
 ```
 

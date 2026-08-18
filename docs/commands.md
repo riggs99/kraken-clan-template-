@@ -197,7 +197,7 @@ One-time setup command that wires up the entire Recruit HQ server.
 
 Run this once when setting up a new server. Safe to re-run — it refreshes IDs without breaking existing data.
 
-> Note: `#appeals` and `#waiting-list` channels and the `waitlist` role are **not** created by `/recruit-setup` — they were added manually and their IDs are stored directly in `config/recruit.config.json` (`channels.appealsChannelId`, `channels.waitingListChannelId`, `roles.waitlistRoleId`).
+> Note: `#waiting-list` and the `waitlist` role are created automatically by `/recruit-setup`. `#appeals` is the one exception still left manual — its ID is stored directly in `config/recruit.config.json` (`channels.appealsChannelId`).
 
 ---
 

@@ -149,9 +149,21 @@ export async function handleSetup(interaction, ctx) {
   const guild = interaction.guild;
   if (!guild) return interaction.reply({ content: 'Guild not available.', flags: MessageFlags.Ephemeral });
 
-  if (!interaction.appPermissions?.has(PermissionFlagsBits.ManageChannels) || !interaction.appPermissions?.has(PermissionFlagsBits.ManageRoles)) {
+  // The full set the invite link is supposed to grant (see docs/onboard-a-clan.md) — checked
+  // here, not just the two most critical ones, so a partial/wrong invite fails clearly up
+  // front instead of surfacing later as a silent per-channel permission gap.
+  const requiredBotPermissions = [
+    ['Manage Roles', PermissionFlagsBits.ManageRoles],
+    ['Manage Channels', PermissionFlagsBits.ManageChannels],
+    ['Send Messages', PermissionFlagsBits.SendMessages],
+    ['Embed Links', PermissionFlagsBits.EmbedLinks],
+    ['Read Message History', PermissionFlagsBits.ReadMessageHistory],
+    ['Manage Messages', PermissionFlagsBits.ManageMessages],
+  ];
+  const missingBotPermissions = requiredBotPermissions.filter(([, flag]) => !interaction.appPermissions?.has(flag));
+  if (missingBotPermissions.length > 0) {
     return interaction.reply({
-      content: 'KRAKEN needs **Manage Channels** and **Manage Roles** in this server to run setup.',
+      content: `KRAKEN is missing these permissions in this server: ${missingBotPermissions.map(([label]) => `**${label}**`).join(', ')}. Re-invite the bot with the full permission set from the setup guide, then run this again.`,
       flags: MessageFlags.Ephemeral
     });
   }
@@ -178,6 +190,9 @@ export async function handleSetup(interaction, ctx) {
   const roleUnderwatch = await findOrCreateRoleByIdOrName(guild, existing?.roles?.underwatchRoleId, 'kraken-underwatch', true);
   const roleOnBreak = await findOrCreateRoleByIdOrName(guild, existing?.roles?.onBreakRoleId, 'on a break', true);
   const roleRemove = await findOrCreateRoleByIdOrName(guild, existing?.roles?.removeRoleId, 'remove');
+  // Queued for a spot once the clan is genuinely full — created here rather than left manual,
+  // so a brand-new clan is fully working immediately with no post-setup steps.
+  const roleWaitlist = await findOrCreateRoleByIdOrName(guild, existing?.roles?.waitlistRoleId, 'waitlist');
 
   // Leaders role (permission gate for war hub controls)
   const roleLeaders = await findOrCreateRoleByIdOrName(guild, existing?.roles?.leadersRoleId, 'leaders', true);
@@ -345,73 +360,72 @@ export async function handleSetup(interaction, ctx) {
   setRecruitSetting(db, 'channels.onBreakChannelId', onBreakChannel.id);
   setRecruitSetting(db, 'channels.removalQueueChannelId', removalQueueChannel.id);
 
-  // Optional member chat channel (baseline clan member chat).
-  const configuredMemberChatId = String(recruitConfig?.channels?.memberChatChannelId ?? '');
-  const memberChatChannel = configuredMemberChatId
-    ? (guild.channels.cache.get(configuredMemberChatId) ?? null)
-    : ((await resolveTextChannelById(guild, existing?.channels?.memberChatChannelId)) ?? findTextChannelByPrefix(guild, 'general') ?? null);
-  if (memberChatChannel?.id) {
-    setRecruitSetting(db, 'channels.memberChatChannelId', memberChatChannel.id);
-    // Gate to actual members only — kraken-member is granted the moment /apply succeeds,
-    // regardless of tier, so this excludes new-arrival/waitlist without excluding anyone
-    // who's actually onboarded. Enforced every run so drift (e.g. a manual permission
-    // change) self-heals on re-setup, same as the other managed channels above.
-    const memberOnlyOverwrites = [
-      { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
-      { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
-      { id: roleMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-      { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-    ];
-    try {
-      if (memberChatChannel.permissionOverwrites?.set) {
-        await memberChatChannel.permissionOverwrites.set(memberOnlyOverwrites, 'KRAKEN Recruit setup: enforce member-chat permissions');
-      }
-    } catch {
-      // ignore overwrite update failures
+  // Member chat channel (baseline clan member chat). Created if missing — not left for a
+  // leader to set up by hand — so a brand-new clan gets a fully working server immediately.
+  // Gate to actual members only — kraken-member is granted the moment /apply succeeds,
+  // regardless of tier, so this excludes new-arrival/waitlist without excluding anyone
+  // who's actually onboarded. Enforced every run so drift self-heals on re-setup.
+  const memberOnlyOverwrites = [
+    { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
+    { id: roleMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+    { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+  ];
+  const configuredMemberChatChannel = await resolveTextChannelById(guild, recruitConfig?.channels?.memberChatChannelId);
+  const memberChatChannel = configuredMemberChatChannel
+    ?? await resolveTextChannelById(guild, existing?.channels?.memberChatChannelId)
+    ?? findTextChannelByPrefix(guild, 'general')
+    ?? await findOrCreateTextChannel(guild, 'general', memberOnlyOverwrites, null);
+  setRecruitSetting(db, 'channels.memberChatChannelId', memberChatChannel.id);
+  try {
+    if (memberChatChannel.permissionOverwrites?.set) {
+      await memberChatChannel.permissionOverwrites.set(memberOnlyOverwrites, 'KRAKEN Recruit setup: enforce member-chat permissions');
     }
+  } catch {
+    // ignore overwrite update failures
   }
 
-  // Optional leaders-only chat channel — distinct from the leaders category above, which is
-  // all bot-managed data/log surfaces (#kraken-decisions-leaders, #kraken-ops, #logs,
-  // #removal-queue), not somewhere leaders would actually sit and talk.
-  const configuredLeadersChatId = String(recruitConfig?.channels?.leadersChatChannelId ?? '');
-  const leadersChatChannel = configuredLeadersChatId
-    ? (guild.channels.cache.get(configuredLeadersChatId) ?? null)
-    : ((await resolveTextChannelById(guild, existing?.channels?.leadersChatChannelId)) ?? findTextChannelByPrefix(guild, 'leaders-channel') ?? findTextChannelByPrefix(guild, 'leaders-chat') ?? null);
-  if (leadersChatChannel?.id) {
-    setRecruitSetting(db, 'channels.leadersChatChannelId', leadersChatChannel.id);
-    try {
-      if (leadersChatChannel.permissionOverwrites?.set) {
-        await leadersChatChannel.permissionOverwrites.set(leadersOnlyOverwrites, 'KRAKEN Recruit setup: enforce leaders-chat permissions');
-      }
-    } catch {
-      // ignore overwrite update failures
+  // Leaders-only chat channel — distinct from the leaders category above, which is all
+  // bot-managed data/log surfaces (#kraken-decisions-leaders, #kraken-ops, #logs,
+  // #removal-queue), not somewhere leaders would actually sit and talk. Also created if
+  // missing, same reasoning as member chat above.
+  const configuredLeadersChatChannel = await resolveTextChannelById(guild, recruitConfig?.channels?.leadersChatChannelId);
+  const leadersChatChannel = configuredLeadersChatChannel
+    ?? await resolveTextChannelById(guild, existing?.channels?.leadersChatChannelId)
+    ?? findTextChannelByPrefix(guild, 'leaders-channel')
+    ?? findTextChannelByPrefix(guild, 'leaders-chat')
+    ?? await findOrCreateTextChannel(guild, 'leaders-chat', leadersOnlyOverwrites, leadersCategory.id);
+  setRecruitSetting(db, 'channels.leadersChatChannelId', leadersChatChannel.id);
+  try {
+    if (leadersChatChannel.permissionOverwrites?.set) {
+      await leadersChatChannel.permissionOverwrites.set(leadersOnlyOverwrites, 'KRAKEN Recruit setup: enforce leaders-chat permissions');
     }
+  } catch {
+    // ignore overwrite update failures
   }
 
-  // Optional waitlist channel (queue for when the clan is genuinely full). The waitlist role
-  // itself is still manual — it may not exist yet — so its overwrite entry is only added when
-  // roles.waitlistRoleId actually resolves to a real role, never left dangling on a bad ID.
-  const configuredWaitingListId = String(recruitConfig?.channels?.waitingListChannelId ?? '');
-  const waitingListChannel = configuredWaitingListId
-    ? (guild.channels.cache.get(configuredWaitingListId) ?? null)
-    : ((await resolveTextChannelById(guild, existing?.channels?.waitingListChannelId)) ?? findTextChannelByPrefix(guild, 'waiting-list') ?? findTextChannelByPrefix(guild, 'waitlist') ?? null);
-  if (waitingListChannel?.id) {
-    setRecruitSetting(db, 'channels.waitingListChannelId', waitingListChannel.id);
-    const waitlistRole = await resolveRoleById(guild, existing?.roles?.waitlistRoleId);
-    const waitingListOverwrites = [
-      { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
-      { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
-      { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-      ...(waitlistRole ? [{ id: waitlistRole.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] : []),
-    ];
-    try {
-      if (waitingListChannel.permissionOverwrites?.set) {
-        await waitingListChannel.permissionOverwrites.set(waitingListOverwrites, 'KRAKEN Recruit setup: enforce waiting-list permissions');
-      }
-    } catch {
-      // ignore overwrite update failures
+  // Waitlist channel (queue for when the clan is genuinely full). roleWaitlist always exists
+  // by this point (created above alongside the other roles), so its overwrite is unconditional
+  // — no more "may not exist yet" case. Also created if missing.
+  const waitingListOverwrites = [
+    { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
+    { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+    { id: roleWaitlist.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
+  ];
+  const configuredWaitingListChannel = await resolveTextChannelById(guild, recruitConfig?.channels?.waitingListChannelId);
+  const waitingListChannel = configuredWaitingListChannel
+    ?? await resolveTextChannelById(guild, existing?.channels?.waitingListChannelId)
+    ?? findTextChannelByPrefix(guild, 'waiting-list')
+    ?? findTextChannelByPrefix(guild, 'waitlist')
+    ?? await findOrCreateTextChannel(guild, 'waiting-list', waitingListOverwrites, null);
+  setRecruitSetting(db, 'channels.waitingListChannelId', waitingListChannel.id);
+  try {
+    if (waitingListChannel.permissionOverwrites?.set) {
+      await waitingListChannel.permissionOverwrites.set(waitingListOverwrites, 'KRAKEN Recruit setup: enforce waiting-list permissions');
     }
+  } catch {
+    // ignore overwrite update failures
   }
 
   setRecruitSetting(db, 'roles.leadersRoleId', roleLeaders.id);
@@ -422,6 +436,7 @@ export async function handleSetup(interaction, ctx) {
   setRecruitSetting(db, 'roles.onBreakRoleId', roleOnBreak.id);
   setRecruitSetting(db, 'roles.probationRoleId', roleProbation.id);
   setRecruitSetting(db, 'roles.removeRoleId', roleRemove.id);
+  setRecruitSetting(db, 'roles.waitlistRoleId', roleWaitlist.id);
 
   // Post/pin the welcome embed so new arrivals see what to do.
   try {
@@ -442,7 +457,7 @@ export async function handleSetup(interaction, ctx) {
   // (e.g. a moderator role) is ever displaced downward, and positions can't collapse onto each
   // other. Purely cosmetic — never block setup.
   try {
-    const orderedTopToBottom = [roleLeaders, roleWarcore, roleMember, roleUnderwatch, roleProbation, roleOnBreak, roleNewArrival, roleRemove]
+    const orderedTopToBottom = [roleLeaders, roleWarcore, roleMember, roleUnderwatch, roleProbation, roleOnBreak, roleNewArrival, roleWaitlist, roleRemove]
       .filter(role => role?.editable);
     if (orderedTopToBottom.length > 1) {
       const slotsHighToLow = orderedTopToBottom.map(role => role.position).sort((a, b) => b - a);
@@ -461,7 +476,7 @@ export async function handleSetup(interaction, ctx) {
   const botRoleName = guild.members.me?.roles?.botRole?.name ?? 'the bot';
   // roleLeaders is included: the bot auto-grants it to in-game co-leaders/leaders on /apply,
   // so it must sit below the bot too — otherwise that grant silently fails.
-  const unassignableRoleNames = [roleNewArrival, roleMember, roleWarcore, roleUnderwatch, roleProbation, roleOnBreak, roleRemove, roleLeaders]
+  const unassignableRoleNames = [roleNewArrival, roleMember, roleWarcore, roleUnderwatch, roleProbation, roleOnBreak, roleRemove, roleWaitlist, roleLeaders]
     .filter(r => r.position >= botHighestPosition)
     .map(r => r.name);
 
@@ -476,9 +491,9 @@ export async function handleSetup(interaction, ctx) {
     `- kraken-ops: <#${opsChannel.id}>`,
     `- logs: <#${logsChannel.id}>`,
     `- removal-queue: <#${removalQueueChannel.id}>`,
-    ...(memberChatChannel?.id ? [`- member chat: <#${memberChatChannel.id}>`] : []),
-    ...(leadersChatChannel?.id ? [`- leaders chat: <#${leadersChatChannel.id}>`] : []),
-    ...(waitingListChannel?.id ? [`- waiting-list: <#${waitingListChannel.id}>`] : []),
+    `- member chat: <#${memberChatChannel.id}>`,
+    `- leaders chat: <#${leadersChatChannel.id}>`,
+    `- waiting-list: <#${waitingListChannel.id}>`,
     '',
     `Roles:`,
     `- probation: <@&${roleProbation.id}>`,
@@ -488,6 +503,7 @@ export async function handleSetup(interaction, ctx) {
     `- kraken-underwatch: <@&${roleUnderwatch.id}>`,
     `- on a break: <@&${roleOnBreak.id}>`,
     `- remove: <@&${roleRemove.id}>`,
+    `- waitlist: <@&${roleWaitlist.id}>`,
     `- leaders: <@&${roleLeaders.id}>`,
     '',
     ...(unassignableRoleNames.length > 0
