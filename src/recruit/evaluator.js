@@ -1642,13 +1642,28 @@ export async function runRecruitDailyEvaluation(client, recruitConfig, db, optio
           String(runtime?.roles?.onBreakRoleId ?? ''),
         ]);
         const alreadyRemoved = isValidDiscordId(removeRoleId) && member.roles.cache.has(removeRoleId);
-        const shouldOffboard =
-          hasClanManagedRole ||
-          alreadyRemoved ||
-          profileStatus === 'approved' ||
-          profileStatus === 'probation' ||
-          profileStatus === 'removed';
 
+        if (profileStatus === 'removed') {
+          // Already fully processed — by this exact loop on a prior day, or by
+          // handleMemberLeave. The notifyNextWaiting call further below must only ever
+          // fire once per actual vacancy: it hands the freed spot to the next waitlisted
+          // person, so re-running it here every day a leader hasn't yet gotten around to
+          // manually kicking this member (KRAKEN can't kick — see the removal-queue
+          // message) would offer the same single spot to a different person each day.
+          // Only exception: keep the remove role self-healed if it's somehow drifted
+          // (e.g. a leader manually restored a clan-managed role by mistake).
+          if (hasClanManagedRole || !alreadyRemoved) {
+            await applyRemovedRoleState({
+              member,
+              runtime,
+              reason: 'KRAKEN clan membership sync (re-affirm remove role)',
+              db,
+            }).catch(() => {});
+          }
+          continue;
+        }
+
+        const shouldOffboard = hasClanManagedRole || alreadyRemoved || profileStatus === 'approved' || profileStatus === 'probation';
         if (!shouldOffboard) continue;
 
         const offboard = await applyRemovedRoleState({
