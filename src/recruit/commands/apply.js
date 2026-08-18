@@ -1,12 +1,13 @@
 import { getClan } from '../../cr-api.js';
 import { normalizePlayerTag } from '../../util.js';
 import { applyPublicAck, dmCooldown } from '../messages.js';
-import { getActiveBreak, getRecruitRuntimeIds, getRecruitSetting, setRecruitSetting, removeFromWaitlist } from '../db.js';
+import { getActiveBreak, getRecruitRuntimeIds, getRecruitSetting, setRecruitSetting, removeFromWaitlist, addToWaitlist } from '../db.js';
 import { suppressManualTierSync } from '../manual-role-sync.js';
 import { EmbedBuilder, MessageFlags } from 'discord.js';
 import { formatErrorForLog } from '../../security.js';
 import { applyRolesVerified } from '../../permissions.js';
 import { sendWelcomeGuideDm } from '../welcome-guide.js';
+import { loadRecruitConfig } from '../../config/loadConfig.js';
 
 function isValidDiscordId(id) {
   return typeof id === 'string' && /^\d{17,20}$/.test(id);
@@ -93,7 +94,10 @@ export async function verifyTagInCurrentClan(tag) {
     const members = Array.isArray(clan?.memberList) ? clan.memberList : [];
     const match = members.find(m => normalizePlayerTag(m?.tag) === tag);
     if (!match) {
-      return { ok: false, code: 'TAG_NOT_IN_CLAN' };
+      // A tag genuinely can't be in the roster while the real in-game clan sits at
+      // Supercell's own 50-member cap — surfaced here so the caller can tell "wrong tag"
+      // apart from "clan's actually full, you physically can't have joined yet".
+      return { ok: false, code: 'TAG_NOT_IN_CLAN', clanFull: members.length >= 50 };
     }
     return {
       ok: true,
@@ -253,6 +257,36 @@ export async function applyCore(interaction, ctx, input) {
 
   const clanVerification = await verifyTagInCurrentClan(tag);
   if (!clanVerification.ok) {
+    // A missing tag while the real clan is genuinely full (Supercell's own 50-member cap)
+    // isn't a wrong-tag mistake — they physically can't have joined yet. Route them onto
+    // the same waitlist path a fresh Discord join would, instead of a confusing rejection.
+    if (clanVerification.code === 'TAG_NOT_IN_CLAN' && clanVerification.clanFull) {
+      const clanName = String(recruitConfig?.clanName ?? '').trim() || 'the clan';
+      const requiresApproval = Boolean(loadRecruitConfig()?.waitlistRequiresApproval);
+
+      if (requiresApproval) {
+        return interaction.reply({
+          content: `The **${clanName}** clan is currently full. Reach out to a leader if you'd like to be considered — they'll add you to the waitlist once approved.`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const waitlistRoleId = String(runtime?.roles?.waitlistRoleId ?? '');
+      const waitingListChannelId = String(runtime?.channels?.waitingListChannelId ?? '');
+      const channelMention = isValidDiscordId(waitingListChannelId) ? `<#${waitingListChannelId}>` : '#waiting-list';
+
+      addToWaitlist(db, String(interaction.user.id));
+      if (isValidDiscordId(waitlistRoleId)) {
+        const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+        if (member) await member.roles.add(waitlistRoleId, 'Auto-assigned — applied while the clan was full').catch(() => {});
+      }
+
+      return interaction.reply({
+        content: `The **${clanName}** clan is currently full, but you've been added to the waitlist. When a spot opens, KRAKEN will DM you — check ${channelMention} for updates.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
     const message = clanVerification.code === 'TAG_NOT_IN_CLAN'
       ? `That player tag is not in the current ${String(recruitConfig?.clanName ?? '').trim() || 'clan'} roster. Use your real current clan tag.`
       : 'KRAKEN could not verify your player tag against the current clan roster. Try again shortly.';
