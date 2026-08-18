@@ -176,7 +176,13 @@ export async function handleRecruitInteraction(interaction, recruitConfig) {
   } catch (e) {
     console.error('[RECRUIT] handler error:', formatErrorForLog(e));
     try {
-      if (!interaction.deferred && !interaction.replied) {
+      // A handler that already deferred (e.g. /recruit-setup) needs editReply, not reply —
+      // calling reply() on an already-deferred interaction throws, which used to mean this
+      // whole catch silently did nothing and left the user staring at "thinking..." until
+      // the interaction token expired, with zero indication anything failed.
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({ content: 'KRAKEN encountered an error. Try again later.' });
+      } else {
         await interaction.reply({ content: 'KRAKEN encountered an error. Try again later.', flags: MessageFlags.Ephemeral });
       }
     } catch {
