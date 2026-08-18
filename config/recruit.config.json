@@ -6,6 +6,7 @@
     "welcomeChannelId": "",
     "applyChannelId": "",
     "memberChatChannelId": "",
+    "leadersChatChannelId": "",
     "decisionsChannelId": "",
     "publicDecisionsChannelId": "",
     "decisionsLogChannelId": "",

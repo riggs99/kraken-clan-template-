@@ -371,6 +371,24 @@ export async function handleSetup(interaction, ctx) {
     }
   }
 
+  // Optional leaders-only chat channel — distinct from the leaders category above, which is
+  // all bot-managed data/log surfaces (#kraken-decisions-leaders, #kraken-ops, #logs,
+  // #removal-queue), not somewhere leaders would actually sit and talk.
+  const configuredLeadersChatId = String(recruitConfig?.channels?.leadersChatChannelId ?? '');
+  const leadersChatChannel = configuredLeadersChatId
+    ? (guild.channels.cache.get(configuredLeadersChatId) ?? null)
+    : ((await resolveTextChannelById(guild, existing?.channels?.leadersChatChannelId)) ?? findTextChannelByPrefix(guild, 'leaders-channel') ?? findTextChannelByPrefix(guild, 'leaders-chat') ?? null);
+  if (leadersChatChannel?.id) {
+    setRecruitSetting(db, 'channels.leadersChatChannelId', leadersChatChannel.id);
+    try {
+      if (leadersChatChannel.permissionOverwrites?.set) {
+        await leadersChatChannel.permissionOverwrites.set(leadersOnlyOverwrites, 'KRAKEN Recruit setup: enforce leaders-chat permissions');
+      }
+    } catch {
+      // ignore overwrite update failures
+    }
+  }
+
   // Optional waitlist channel (queue for when the clan is genuinely full). The waitlist role
   // itself is still manual — it may not exist yet — so its overwrite entry is only added when
   // roles.waitlistRoleId actually resolves to a real role, never left dangling on a bad ID.
@@ -458,6 +476,9 @@ export async function handleSetup(interaction, ctx) {
     `- kraken-ops: <#${opsChannel.id}>`,
     `- logs: <#${logsChannel.id}>`,
     `- removal-queue: <#${removalQueueChannel.id}>`,
+    ...(memberChatChannel?.id ? [`- member chat: <#${memberChatChannel.id}>`] : []),
+    ...(leadersChatChannel?.id ? [`- leaders chat: <#${leadersChatChannel.id}>`] : []),
+    ...(waitingListChannel?.id ? [`- waiting-list: <#${waitingListChannel.id}>`] : []),
     '',
     `Roles:`,
     `- probation: <@&${roleProbation.id}>`,

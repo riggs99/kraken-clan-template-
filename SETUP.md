@@ -166,14 +166,28 @@ builds the entire Recruit HQ automatically:
 - `#on-a-break` — members-only (`kraken-member` + `leaders`), break-request
   panel
 - **leaders** category (leaders-only): `#kraken-decisions-leaders` (full
-  internal decision log), `#kraken-ops`, `#logs`, `#removal-queue`
+  internal decision log), `#kraken-ops`, `#logs`, `#removal-queue` — these
+  are all bot-managed data/log surfaces, not a place to actually chat
 - Member chat (optional, adopted by name-match on a channel called
   `general`, or set explicitly via `channels.memberChatChannelId`) —
   members-only (`kraken-member` + `leaders`)
+- Leaders chat (optional, adopted by name-match on `leaders-channel` /
+  `leaders-chat`, or set explicitly via `channels.leadersChatChannelId`) —
+  a plain leaders-only chat space, separate from the leaders category above
+- Waiting list (optional, adopted by name-match on `waiting-list` /
+  `waitlist`, or set explicitly via `channels.waitingListChannelId`) —
+  read-only queue panel; also gates in the `waitlist` role (`roles.waitlistRoleId`)
+  once it exists, but that role itself still isn't created automatically
 
 `kraken-member` is granted to everyone the moment `/apply` succeeds,
 regardless of tier — so a `new-arrival` who hasn't applied, or someone
 sitting on the waitlist, sees only `#welcome` until they're actually in.
+
+Every KRAKEN role's own server-wide permissions (Server Settings → Roles →
+Permissions) are also zeroed out automatically on every run — all real
+access control lives in the channel overwrites above, never on the role
+itself. The bot's own role is the only exception; see
+[Role hierarchy](#role-hierarchy) below.
 
 **Roles** (created below the bot, in display order): `leaders`,
 `kraken-warcore`, `kraken-member`, `kraken-underwatch`, `probation`,
