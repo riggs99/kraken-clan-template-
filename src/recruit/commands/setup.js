@@ -370,6 +370,32 @@ export async function handleSetup(interaction, ctx) {
       // ignore overwrite update failures
     }
   }
+
+  // Optional waitlist channel (queue for when the clan is genuinely full). The waitlist role
+  // itself is still manual — it may not exist yet — so its overwrite entry is only added when
+  // roles.waitlistRoleId actually resolves to a real role, never left dangling on a bad ID.
+  const configuredWaitingListId = String(recruitConfig?.channels?.waitingListChannelId ?? '');
+  const waitingListChannel = configuredWaitingListId
+    ? (guild.channels.cache.get(configuredWaitingListId) ?? null)
+    : ((await resolveTextChannelById(guild, existing?.channels?.waitingListChannelId)) ?? findTextChannelByPrefix(guild, 'waiting-list') ?? findTextChannelByPrefix(guild, 'waitlist') ?? null);
+  if (waitingListChannel?.id) {
+    setRecruitSetting(db, 'channels.waitingListChannelId', waitingListChannel.id);
+    const waitlistRole = await resolveRoleById(guild, existing?.roles?.waitlistRoleId);
+    const waitingListOverwrites = [
+      { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
+      { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
+      { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+      ...(waitlistRole ? [{ id: waitlistRole.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] }] : []),
+    ];
+    try {
+      if (waitingListChannel.permissionOverwrites?.set) {
+        await waitingListChannel.permissionOverwrites.set(waitingListOverwrites, 'KRAKEN Recruit setup: enforce waiting-list permissions');
+      }
+    } catch {
+      // ignore overwrite update failures
+    }
+  }
+
   setRecruitSetting(db, 'roles.leadersRoleId', roleLeaders.id);
   setRecruitSetting(db, 'roles.memberRoleId', roleMember.id);
   setRecruitSetting(db, 'roles.warcoreRoleId', roleWarcore.id);
