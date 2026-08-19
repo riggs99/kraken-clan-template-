@@ -424,6 +424,18 @@ export async function handleSetup(interaction, ctx) {
     enforceReason: 'KRAKEN Recruit setup: enforce leaders-chat permissions',
   });
   setRecruitSetting(db, 'channels.leadersChatChannelId', leadersChatChannel.id);
+  try {
+    // findOrCreateManagedChannel only parents on first creation, not when it resolves an
+    // existing channel by ID — enforced here too so a manually-dragged channel self-heals
+    // back into place. Positioned first in the category (leaders check this one most) —
+    // re-set on every run since a freshly-created channel otherwise lands at the bottom.
+    if (leadersChatChannel.parentId !== leadersCategory.id) {
+      await leadersChatChannel.setParent(leadersCategory.id, { lockPermissions: false, reason: 'KRAKEN Recruit setup: group under leaders category' });
+    }
+    await leadersChatChannel.setPosition(0);
+  } catch {
+    // ignore — purely cosmetic ordering, never block setup
+  }
 
   // Waitlist channel (queue for when the clan is genuinely full). roleWaitlist always exists
   // by this point (created above alongside the other roles). Also created if missing.
