@@ -224,7 +224,12 @@ export async function ensureBreakPost(client, recruitConfig, db) {
 
   const existingInfoId = String(getRecruitSetting(db, 'messages.breakInfoEmbedId') ?? '');
   const existingPanelId = String(getRecruitSetting(db, 'messages.breakPanelId') ?? '');
-  // No info embed stored means first setup or post-reset — purge and re-post cleanly
+  // No info embed stored means first setup or post-reset — purge and re-post cleanly. This is
+  // only safe because onBreakChannelId can never point at a pre-existing, unrelated channel
+  // with real message history: setup.js resolves it purely by a stored ID from a previous
+  // KRAKEN run, or creates a brand-new (guaranteed empty) channel — never a name match against
+  // whatever a real clan's server already has. If that ever changes, this purge needs to
+  // change with it.
   const shouldPurge = !existingInfoId;
 
   if (shouldPurge) {

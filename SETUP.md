@@ -205,6 +205,17 @@ reuses what it already made (by ID, not name) and never creates duplicates. If
 any managed role has drifted above the bot, the completion message tells you
 exactly which role to move.
 
+**It's also safe to run on your clan's existing Discord server** — you don't
+need a fresh one. `/recruit-setup` only ever adopts a channel or role it
+already created and tracked by ID (or one you explicitly point it at via
+config); it never guesses by matching an existing channel/role's name. A real
+server almost certainly already has channels named things like `#general` or
+`#welcome` — this is deliberate: it means a coincidence of naming can never
+cause KRAKEN to silently rewrite permissions on, or (for `#on-a-break`
+specifically) delete message history from, something that was never KRAKEN's
+to touch. Worst case if a name happens to match is a harmless duplicate
+channel sitting next to the real one — never a modified or wiped one.
+
 ---
 
 ## Step 8 — Members join

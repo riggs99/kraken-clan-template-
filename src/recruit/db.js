@@ -259,6 +259,7 @@ export function getRecruitRuntimeIds(db) {
     'channels.removalQueueChannelId',
     'channels.appealsChannelId',
     'channels.waitingListChannelId',
+    'channels.leadersCategoryId',
     'roles.leadersRoleId',
     'roles.memberRoleId',
     'roles.warcoreRoleId',
@@ -288,6 +289,7 @@ export function getRecruitRuntimeIds(db) {
       removalQueueChannelId: out['channels.removalQueueChannelId'],
       appealsChannelId: out['channels.appealsChannelId'],
       waitingListChannelId: out['channels.waitingListChannelId'],
+      leadersCategoryId: out['channels.leadersCategoryId'],
     },
     roles: {
       leadersRoleId: out['roles.leadersRoleId'],

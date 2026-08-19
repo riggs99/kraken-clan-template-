@@ -47,12 +47,10 @@ async function enforcePermissions(role) {
   return role;
 }
 
-async function findOrCreateRole(guild, name, hoist = false) {
-  const existing = guild.roles.cache.find(r => r.name === name) ?? null;
-  if (existing) {
-    await enforceHoist(existing, hoist);
-    return enforcePermissions(existing);
-  }
+// Deliberately NOT a find-by-name-then-create — see the comment on
+// findOrCreateRoleById below for why matching an existing role by name is unsafe
+// on a real, already-populated server.
+async function createRole(guild, name, hoist = false) {
   return guild.roles.create({ name, mentionable: false, hoist, permissions: [], reason: 'KRAKEN Recruit setup' });
 }
 
@@ -62,9 +60,8 @@ function rolesWithModPowers(guild) {
     .map(r => r.id);
 }
 
-async function findOrCreateTextChannel(guild, name, overwrites, parentId) {
-  const existing = guild.channels.cache.find(c => c?.type === ChannelType.GuildText && c?.name === name) ?? null;
-  if (existing) return existing;
+// Deliberately NOT a find-by-name-then-create — see findOrCreateTextChannelById below.
+async function createTextChannel(guild, name, overwrites, parentId) {
   return guild.channels.create({
     name,
     type: ChannelType.GuildText,
@@ -74,23 +71,13 @@ async function findOrCreateTextChannel(guild, name, overwrites, parentId) {
   });
 }
 
-async function findOrCreateCategory(guild, name, overwrites) {
-  const existing = guild.channels.cache.find(c => c?.type === ChannelType.GuildCategory && c?.name === name) ?? null;
-  if (existing) return existing;
+async function createCategory(guild, name, overwrites) {
   return guild.channels.create({
     name,
     type: ChannelType.GuildCategory,
     permissionOverwrites: overwrites,
     reason: 'KRAKEN Recruit setup'
   });
-}
-
-function findTextChannelByPrefix(guild, prefix) {
-  const p = String(prefix ?? '').toLowerCase();
-  if (!p) return null;
-  return guild.channels.cache.find(c =>
-    c?.type === ChannelType.GuildText && typeof c?.name === 'string' && c.name.toLowerCase().startsWith(p)
-  ) ?? null;
 }
 
 async function resolveTextChannelById(guild, channelId) {
@@ -101,6 +88,19 @@ async function resolveTextChannelById(guild, channelId) {
   try {
     const fetched = await guild.channels.fetch(id);
     return fetched?.type === ChannelType.GuildText ? fetched : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveCategoryById(guild, categoryId) {
+  const id = String(categoryId ?? '');
+  if (!isValidDiscordId(id)) return null;
+  const cached = guild.channels.cache.get(id) ?? null;
+  if (cached?.type === ChannelType.GuildCategory) return cached;
+  try {
+    const fetched = await guild.channels.fetch(id);
+    return fetched?.type === ChannelType.GuildCategory ? fetched : null;
   } catch {
     return null;
   }
@@ -118,35 +118,40 @@ async function resolveRoleById(guild, roleId) {
   }
 }
 
-// Prefer the role/channel this server was provisioned with last time, looked up by the ID
-// stored in SQLite — never by name. A name-only lookup silently reassigns the wrong channel
-// (with its existing message history) if a default name ever changes between template
-// versions; keying off the stored ID makes a rename affect only genuine first-time setups.
-async function findOrCreateRoleByIdOrName(guild, storedId, name, hoist = false) {
+// Resolve the role this server was provisioned with last time, looked up by the ID stored in
+// SQLite — NEVER by name. This runs on real clan servers, not just empty test ones: matching
+// an existing role by name (e.g. a clan that already has its own "leaders" role with real
+// permissions on it) would silently adopt and zero out something that was never KRAKEN's to
+// touch. If the stored ID doesn't resolve, always create fresh rather than guess. The only
+// cost is a rare edge case — this server's own database got wiped while its Discord roles
+// still exist — falling back to a duplicate-named role instead of self-healing by name; that
+// trade is worth it to guarantee a pre-existing, unrelated role can never be silently touched.
+async function findOrCreateRoleById(guild, storedId, name, hoist = false) {
   const byId = await resolveRoleById(guild, storedId);
   if (byId) {
     await enforceHoist(byId, hoist);
     return enforcePermissions(byId);
   }
-  return findOrCreateRole(guild, name, hoist);
+  return createRole(guild, name, hoist);
 }
 
-async function findOrCreateTextChannelByIdOrName(guild, storedId, name, overwrites, parentId) {
-  return (await resolveTextChannelById(guild, storedId)) ?? findOrCreateTextChannel(guild, name, overwrites, parentId);
+// Same reasoning as findOrCreateRoleById — stored ID or create fresh, never a name match.
+// A real clan's existing server very plausibly already has a channel called "general",
+// "welcome", or "logs"; adopting one of those by name would silently rewrite its permissions
+// (or, for #on-a-break specifically, purge its entire message history — see breaks.js) even
+// though it was never a channel KRAKEN created.
+async function findOrCreateTextChannelById(guild, storedId, name, overwrites, parentId) {
+  return (await resolveTextChannelById(guild, storedId)) ?? createTextChannel(guild, name, overwrites, parentId);
 }
 
-// Resolve an optional-but-now-guaranteed channel by: configured ID > stored ID > a name-match
-// against any of namePrefixes > create fresh. Then (re-)enforce its overwrites unconditionally,
-// so drift self-heals on every re-run the same way the channels above it in this file do.
-async function findOrCreateManagedChannel(guild, { configuredId, storedId, namePrefixes, createName, overwrites, parentId = null, enforceReason }) {
-  let channel = await resolveTextChannelById(guild, configuredId)
+// Resolve an optional-but-now-guaranteed channel by: configured ID > stored ID > create fresh.
+// Then (re-)enforce its overwrites unconditionally, so drift self-heals on every re-run the
+// same way the channels above it in this file do. No name-matching — see the comment on
+// findOrCreateTextChannelById above for why.
+async function findOrCreateManagedChannel(guild, { configuredId, storedId, createName, overwrites, parentId = null, enforceReason }) {
+  const channel = await resolveTextChannelById(guild, configuredId)
     ?? await resolveTextChannelById(guild, storedId)
-    ?? null;
-  for (const prefix of namePrefixes) {
-    if (channel) break;
-    channel = findTextChannelByPrefix(guild, prefix);
-  }
-  channel ??= await findOrCreateTextChannel(guild, createName, overwrites, parentId);
+    ?? await createTextChannel(guild, createName, overwrites, parentId);
 
   try {
     if (channel.permissionOverwrites?.set) {
@@ -215,22 +220,22 @@ export async function handleSetup(interaction, ctx) {
   // hoist: true = shown as its own group in the member sidebar. We hoist standing/tier roles
   // (leaders + the tier ladder + probation + on-a-break) so a clan's standings read at a glance,
   // and leave the operational gate/exit roles (new-arrival, remove) ungrouped to avoid clutter.
-  const roleProbation = await findOrCreateRoleByIdOrName(guild, existing?.roles?.probationRoleId, 'probation', true);
+  const roleProbation = await findOrCreateRoleById(guild, existing?.roles?.probationRoleId, 'probation', true);
 
   // War Hub core roles (chat + war standard + probation overlay)
   // Gate role: invite can grant this so new arrivals only see #welcome until they agree.
-  const roleNewArrival = await findOrCreateRoleByIdOrName(guild, existing?.roles?.newArrivalRoleId, 'new-arrival');
-  const roleMember = await findOrCreateRoleByIdOrName(guild, existing?.roles?.memberRoleId, 'kraken-member', true);
-  const roleWarcore = await findOrCreateRoleByIdOrName(guild, existing?.roles?.warcoreRoleId, 'kraken-warcore', true);
-  const roleUnderwatch = await findOrCreateRoleByIdOrName(guild, existing?.roles?.underwatchRoleId, 'kraken-underwatch', true);
-  const roleOnBreak = await findOrCreateRoleByIdOrName(guild, existing?.roles?.onBreakRoleId, 'on a break', true);
-  const roleRemove = await findOrCreateRoleByIdOrName(guild, existing?.roles?.removeRoleId, 'remove');
+  const roleNewArrival = await findOrCreateRoleById(guild, existing?.roles?.newArrivalRoleId, 'new-arrival');
+  const roleMember = await findOrCreateRoleById(guild, existing?.roles?.memberRoleId, 'kraken-member', true);
+  const roleWarcore = await findOrCreateRoleById(guild, existing?.roles?.warcoreRoleId, 'kraken-warcore', true);
+  const roleUnderwatch = await findOrCreateRoleById(guild, existing?.roles?.underwatchRoleId, 'kraken-underwatch', true);
+  const roleOnBreak = await findOrCreateRoleById(guild, existing?.roles?.onBreakRoleId, 'on a break', true);
+  const roleRemove = await findOrCreateRoleById(guild, existing?.roles?.removeRoleId, 'remove');
   // Queued for a spot once the clan is genuinely full — created here rather than left manual,
   // so a brand-new clan is fully working immediately with no post-setup steps.
-  const roleWaitlist = await findOrCreateRoleByIdOrName(guild, existing?.roles?.waitlistRoleId, 'waitlist');
+  const roleWaitlist = await findOrCreateRoleById(guild, existing?.roles?.waitlistRoleId, 'waitlist');
 
   // Leaders role (permission gate for war hub controls)
-  const roleLeaders = await findOrCreateRoleByIdOrName(guild, existing?.roles?.leadersRoleId, 'leaders', true);
+  const roleLeaders = await findOrCreateRoleById(guild, existing?.roles?.leadersRoleId, 'leaders', true);
 
   const modRoleIds = rolesWithModPowers(guild);
 
@@ -245,7 +250,9 @@ export async function handleSetup(interaction, ctx) {
     { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
     { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
   ];
-  const leadersCategory = await findOrCreateCategory(guild, 'leaders', leadersOnlyOverwrites);
+  const leadersCategory = (await resolveCategoryById(guild, existing?.channels?.leadersCategoryId))
+    ?? await createCategory(guild, 'leaders', leadersOnlyOverwrites);
+  setRecruitSetting(db, 'channels.leadersCategoryId', leadersCategory.id);
 
   const decisionsOverwrites = [
     { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
@@ -266,7 +273,7 @@ export async function handleSetup(interaction, ctx) {
     { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
     { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
   ];
-  const welcomeChannel = await findOrCreateTextChannelByIdOrName(guild, existing?.channels?.welcomeChannelId, 'welcome', welcomeOverwrites);
+  const welcomeChannel = await findOrCreateTextChannelById(guild, existing?.channels?.welcomeChannelId, 'welcome', welcomeOverwrites);
   try {
     // Enforce overwrites even if the channel already existed (prevents modal submit "Something went wrong" due to bot lacking SendMessages).
     if (welcomeChannel?.permissionOverwrites?.set) {
@@ -277,7 +284,7 @@ export async function handleSetup(interaction, ctx) {
   }
   const configuredDecisionsId = String(recruitConfig?.channels?.decisionsChannelId ?? '');
   const configuredDecisionsChannel = await resolveTextChannelById(guild, configuredDecisionsId);
-  const decisionsChannel = configuredDecisionsChannel ?? await findOrCreateTextChannelByIdOrName(guild, existing?.channels?.decisionsChannelId, 'kraken-decisions-leaders', decisionsOverwrites, leadersCategory.id);
+  const decisionsChannel = configuredDecisionsChannel ?? await findOrCreateTextChannelById(guild, existing?.channels?.decisionsChannelId, 'kraken-decisions-leaders', decisionsOverwrites, leadersCategory.id);
 
   // Read-only channel for daily KRAKEN decisions (no pings). Visible to actual members
   // (kraken-member, granted the moment /apply succeeds) + leaders — not to new-arrival/
@@ -290,25 +297,16 @@ export async function handleSetup(interaction, ctx) {
     { id: roleMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
     { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
   ];
-  // Resolve the public channel by: configured ID > stored ID > a name match that is ALREADY
-  // hidden from @everyone > a fresh channel. A name match that's currently wide open to
-  // @everyone is NEVER adopted here — it would be an old fully-public "kraken-decisions"
-  // from before the members-only gate, and the re-affirm below would need ViewChannel
-  // already denied for @everyone or it'd flip a channel we don't intend to touch. In that
-  // case we create a fresh members-gated channel and leave the old public one alone.
-  let publicDecisionsChannel = publicDecisionsConfigured
-    ?? await resolveTextChannelById(guild, existing?.channels?.publicDecisionsChannelId);
-  if (!publicDecisionsChannel) {
-    const byName = guild.channels.cache.find(c => c?.type === ChannelType.GuildText && c?.name === 'kraken-decisions') ?? null;
-    const byNameHidesEveryone = Boolean(byName?.permissionOverwrites?.cache?.get(everyoneId)?.deny?.has(PermissionFlagsBits.ViewChannel));
-    publicDecisionsChannel = (byName && byNameHidesEveryone)
-      ? byName
-      : await guild.channels.create({ name: 'kraken-decisions', type: ChannelType.GuildText, permissionOverwrites: publicDecisionsOverwrites, reason: 'KRAKEN Recruit setup' });
-  }
+  // Resolve the public channel by: configured ID > stored ID > create fresh. No name-matching
+  // — see the comment on findOrCreateTextChannelById above for why guessing by name is unsafe
+  // on a real, already-populated server.
+  const publicDecisionsChannel = publicDecisionsConfigured
+    ?? await resolveTextChannelById(guild, existing?.channels?.publicDecisionsChannelId)
+    ?? await createTextChannel(guild, 'kraken-decisions', publicDecisionsOverwrites, null);
   try {
     // Safe to re-affirm overwrites + top-level placement now: publicDecisionsChannel is
-    // always either our own channel (resolved by ID), an already-gated name match, or
-    // freshly created — never a channel we adopted while it was still open to everyone.
+    // always either our own channel (resolved by ID) or freshly created — never a channel
+    // we adopted from elsewhere.
     if (publicDecisionsChannel?.permissionOverwrites?.set) {
       await publicDecisionsChannel.permissionOverwrites.set(publicDecisionsOverwrites, 'KRAKEN Recruit setup: enforce kraken-decisions (members-only) permissions');
     }
@@ -328,7 +326,7 @@ export async function handleSetup(interaction, ctx) {
     { id: roleMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
     { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
   ];
-  const onBreakChannel = await findOrCreateTextChannelByIdOrName(guild, existing?.channels?.onBreakChannelId, 'on-a-break', breakOverwrites);
+  const onBreakChannel = await findOrCreateTextChannelById(guild, existing?.channels?.onBreakChannelId, 'on-a-break', breakOverwrites);
   try {
     // Ensure overwrites are correct even if the channel already existed (fixes "Missing Access" after re-invite/role changes).
     if (onBreakChannel?.permissionOverwrites?.set) {
@@ -338,20 +336,18 @@ export async function handleSetup(interaction, ctx) {
     // ignore overwrite update failures
   }
 
-  // Leaders-only ops + logs channels (no pings; operators use these as control surface)
+  // Leaders-only ops + logs channels (no pings; operators use these as control surface).
+  // No name-matching — see the comment on findOrCreateTextChannelById above.
   const opsChannel =
     (await resolveTextChannelById(guild, existing?.channels?.opsChannelId)) ??
-    findTextChannelByPrefix(guild, 'kraken-ops') ??
-    await findOrCreateTextChannel(guild, 'kraken-ops', leadersOnlyOverwrites, leadersCategory.id);
-  const logsChannel = await findOrCreateTextChannelByIdOrName(guild, existing?.channels?.logsChannelId, 'logs', leadersOnlyOverwrites, leadersCategory.id);
+    await createTextChannel(guild, 'kraken-ops', leadersOnlyOverwrites, leadersCategory.id);
+  const logsChannel = await findOrCreateTextChannelById(guild, existing?.channels?.logsChannelId, 'logs', leadersOnlyOverwrites, leadersCategory.id);
   const configuredRemovalQueueId = String(recruitConfig?.channels?.removalQueueChannelId ?? '');
   const configuredRemovalQueueChannel = await resolveTextChannelById(guild, configuredRemovalQueueId);
   const removalQueueChannel =
     configuredRemovalQueueChannel ??
     (await resolveTextChannelById(guild, existing?.channels?.removalQueueChannelId)) ??
-    findTextChannelByPrefix(guild, 'remov') ??
-    findTextChannelByPrefix(guild, 'kick') ??
-    await findOrCreateTextChannel(guild, 'removal-queue', leadersOnlyOverwrites, leadersCategory.id);
+    await createTextChannel(guild, 'removal-queue', leadersOnlyOverwrites, leadersCategory.id);
   try {
     // Enforce leader-only visibility even if channels already existed (prevents new members from landing here).
     if (opsChannel?.permissionOverwrites?.set) {
@@ -409,7 +405,6 @@ export async function handleSetup(interaction, ctx) {
   const memberChatChannel = await findOrCreateManagedChannel(guild, {
     configuredId: recruitConfig?.channels?.memberChatChannelId,
     storedId: existing?.channels?.memberChatChannelId,
-    namePrefixes: ['general'],
     createName: 'general',
     overwrites: memberOnlyOverwrites,
     enforceReason: 'KRAKEN Recruit setup: enforce member-chat permissions',
@@ -423,7 +418,6 @@ export async function handleSetup(interaction, ctx) {
   const leadersChatChannel = await findOrCreateManagedChannel(guild, {
     configuredId: recruitConfig?.channels?.leadersChatChannelId,
     storedId: existing?.channels?.leadersChatChannelId,
-    namePrefixes: ['leaders-channel', 'leaders-chat'],
     createName: 'leaders-chat',
     overwrites: leadersOnlyOverwrites,
     parentId: leadersCategory.id,
@@ -442,7 +436,6 @@ export async function handleSetup(interaction, ctx) {
   const waitingListChannel = await findOrCreateManagedChannel(guild, {
     configuredId: recruitConfig?.channels?.waitingListChannelId,
     storedId: existing?.channels?.waitingListChannelId,
-    namePrefixes: ['waiting-list', 'waitlist'],
     createName: 'waiting-list',
     overwrites: waitingListOverwrites,
     enforceReason: 'KRAKEN Recruit setup: enforce waiting-list permissions',
@@ -461,7 +454,6 @@ export async function handleSetup(interaction, ctx) {
   const appealsChannel = await findOrCreateManagedChannel(guild, {
     configuredId: recruitConfig?.channels?.appealsChannelId,
     storedId: existing?.channels?.appealsChannelId,
-    namePrefixes: ['appeals'],
     createName: 'appeals',
     overwrites: appealsOnlyOverwrites,
     enforceReason: 'KRAKEN Recruit setup: enforce appeals permissions',
