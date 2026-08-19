@@ -80,13 +80,17 @@ async function createCategory(guild, name, overwrites) {
   });
 }
 
+// force: true on every fetch below is deliberate — discord.js's default fetch() checks its
+// local cache first and only calls the API if the ID isn't cached, which would let a channel
+// deleted moments ago (before the CHANNEL_DELETE gateway event has been processed) still
+// resolve as "found" from a stale cache entry. That silently blocks re-creation: setup would
+// think the old channel still exists and never make a new one. force: true always hits the
+// API for a genuine answer.
 async function resolveTextChannelById(guild, channelId) {
   const id = String(channelId ?? '');
   if (!isValidDiscordId(id)) return null;
-  const cached = guild.channels.cache.get(id) ?? null;
-  if (cached?.type === ChannelType.GuildText) return cached;
   try {
-    const fetched = await guild.channels.fetch(id);
+    const fetched = await guild.channels.fetch(id, { force: true });
     return fetched?.type === ChannelType.GuildText ? fetched : null;
   } catch {
     return null;
@@ -96,10 +100,8 @@ async function resolveTextChannelById(guild, channelId) {
 async function resolveCategoryById(guild, categoryId) {
   const id = String(categoryId ?? '');
   if (!isValidDiscordId(id)) return null;
-  const cached = guild.channels.cache.get(id) ?? null;
-  if (cached?.type === ChannelType.GuildCategory) return cached;
   try {
-    const fetched = await guild.channels.fetch(id);
+    const fetched = await guild.channels.fetch(id, { force: true });
     return fetched?.type === ChannelType.GuildCategory ? fetched : null;
   } catch {
     return null;
@@ -109,10 +111,8 @@ async function resolveCategoryById(guild, categoryId) {
 async function resolveRoleById(guild, roleId) {
   const id = String(roleId ?? '');
   if (!isValidDiscordId(id)) return null;
-  const cached = guild.roles.cache.get(id) ?? null;
-  if (cached) return cached;
   try {
-    return await guild.roles.fetch(id);
+    return await guild.roles.fetch(id, { force: true });
   } catch {
     return null;
   }
