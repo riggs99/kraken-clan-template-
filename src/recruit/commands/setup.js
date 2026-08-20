@@ -188,7 +188,29 @@ async function findOrCreateManagedChannel(guild, { configuredId, storedId, creat
   return channel;
 }
 
+// Guards against two /recruit-setup runs overlapping — e.g. two co-leaders both trying to
+// help at once, or a double-click. Without this, both invocations could read "no stored ID
+// yet" for a channel/role before either has finished writing one, and both create their own
+// duplicate. Only one instance per process ever exists (each clan is its own isolated bot), so
+// a single module-level flag is enough — no need for a per-guild map.
+let setupInFlight = false;
+
 export async function handleSetup(interaction, ctx) {
+  if (setupInFlight) {
+    return interaction.reply({
+      content: '⏳ Recruit HQ setup is already running from another request. Wait for it to finish, then run this again if anything still needs fixing.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  setupInFlight = true;
+  try {
+    return await handleSetupInner(interaction, ctx);
+  } finally {
+    setupInFlight = false;
+  }
+}
+
+async function handleSetupInner(interaction, ctx) {
   const recruitConfig = ctx?.recruitConfig;
   const db = ctx?.db;
 
