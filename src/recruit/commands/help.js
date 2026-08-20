@@ -43,7 +43,8 @@ export async function handleHelp(interaction, { db }) {
         '`/recruit-add-member` — manually link a Discord member to a Clash Royale tag and add them on probation, for anyone who joined outside the normal /apply flow. Ops channel only.',
         '`/ops` — main clan dashboard: health score, attention queue, donation rankings, promote/boot-review recommendations.',
         '`/war` — standalone war hub: live leaderboard, war-contribution ranking, boat-attack offenders, tier-decision buckets.',
-        '`/recruit-remove-member` — ⚠️ kicks a member from Discord (after a confirmation step) and marks them removed in KRAKEN. Requires a logged reason. Cannot be undone.',
+        '`/recruit-remove-member` — ⚠️ kicks a member from Discord (after a confirmation step) and marks them removed in KRAKEN. Requires a logged reason. Cannot be undone. Needs the bot to have Kick Members permission, which is off by default.',
+        '`/recruit-ban-member` — ⚠️ same as above, but bans instead of kicking (they can\'t rejoin with a new invite). Needs Ban Members permission, also off by default.',
       ].join('\n'),
     );
   }
