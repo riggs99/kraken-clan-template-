@@ -38,7 +38,7 @@ export function getRecruitDb() {
 // command's slash-command definition with its handler here means adding a new
 // command only ever needs one entry, not two lists kept in sync by hand — the
 // deploy list and the dispatch chain used to be separate, and drift is exactly
-// what happens when a new command (e.g. /recruit-help) needs both touched.
+// what happens when a new command (e.g. /help) needs both touched.
 // Every handler gets the same (interaction, ctx) signature; ctx carries
 // whatever superset of {recruitConfig, db, runtime, client} a given handler
 // needs, and unused fields are simply ignored via destructuring.

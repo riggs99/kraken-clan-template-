@@ -4,7 +4,7 @@ import { isLeaderOrAdmin, isServerOwner } from '../../permissions.js';
 import { buildDashboardContainer, CLAN_BADGE_URL, STATUS_COLORS } from '../../dashboard-components.js';
 
 export const command = {
-  name: 'recruit-help',
+  name: 'help',
   description: 'Show what KRAKEN commands you can use and how',
 };
 
