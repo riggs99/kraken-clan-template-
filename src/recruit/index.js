@@ -15,6 +15,7 @@ import { handleSettings, command as settingsCommand } from './commands/settings.
 import { handleHistory, command as historyCommand } from './commands/history.js';
 import { handleAddMember, command as addMemberCommand } from './commands/add-member.js';
 import { handleRemoveMember, handleRemoveMemberConfirm, handleRemoveMemberCancel, command as removeMemberCommand } from './commands/remove-member.js';
+import { handleBanMember, handleBanMemberConfirm, handleBanMemberCancel, command as banMemberCommand } from './commands/ban-member.js';
 import { getRecruitRuntimeIds } from './db.js';
 import { normalizePlayerTag } from '../util.js';
 import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, MessageFlags } from 'discord.js';
@@ -56,6 +57,7 @@ const chatInputCommands = [
   { command: historyCommand, handle: handleHistory },
   { command: addMemberCommand, handle: handleAddMember },
   { command: removeMemberCommand, handle: handleRemoveMember },
+  { command: banMemberCommand, handle: handleBanMember },
 ];
 
 export const recruitCommands = chatInputCommands.map(c => c.command);
@@ -116,6 +118,14 @@ export async function handleRecruitInteraction(interaction, recruitConfig) {
       }
       if (interaction.isButton() && interaction.customId.startsWith('recruit:removeCancel:')) {
         await handleRemoveMemberCancel(interaction);
+        return true;
+      }
+      if (interaction.isButton() && interaction.customId.startsWith('recruit:banConfirm:')) {
+        await handleBanMemberConfirm(interaction, ctx, interaction.customId.slice('recruit:banConfirm:'.length));
+        return true;
+      }
+      if (interaction.isButton() && interaction.customId.startsWith('recruit:banCancel:')) {
+        await handleBanMemberCancel(interaction);
         return true;
       }
     }

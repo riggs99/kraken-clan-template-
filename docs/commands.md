@@ -133,7 +133,26 @@ Leader override — manually add any Discord member to the clan on probation, by
 - Does **not** touch the Clash Royale clan roster — KRAKEN cannot kick from the in-game clan (no API access for that), so remove them there separately if needed
 - If the clan currently has space, the freed spot is offered to the next person on the waitlist
 - Posts a permanent record to the removal-queue/logs channel naming the leader and the reason, for accountability
-- Requires the bot to have **Kick Members** permission in the server
+- Requires the bot to have **Kick Members** permission in the server — this is **not** part of the standard invite link or `/recruit-setup`'s permission check, so by default this command just tells the leader it needs that permission rather than doing anything. A clan only gets this feature if a leader deliberately grants Kick Members in Server Settings → Roles.
+
+---
+
+### `/recruit-ban-member`
+
+**Who can use:** Leaders / Admin only
+**Channel:** Anywhere in Recruit HQ (same reasoning as `/recruit-remove-member` — an incident-response tool)
+
+🚨 **Emergency leader override, ban version** — immediately bans a member from the Discord server and marks them removed in KRAKEN. Same use case as `/recruit-remove-member`, for when a kick isn't enough (they shouldn't be able to rejoin with a new invite).
+
+**Options:** `player` (Discord member to ban) · `reason` (required, logged)
+
+- Same DB-first ordering as the kick command: profile marked `removed` and all tracking state cleared **before** the ban fires, so it skips the normal soft grace period
+- Bans without deleting any of their prior messages (`deleteMessageSeconds: 0` explicitly) — the ban's only effect is removing server access
+- Does **not** touch the Clash Royale clan roster — remove them there separately if needed
+- If the clan currently has space, the freed spot is offered to the next person on the waitlist
+- Posts a permanent record to the removal-queue/logs channel naming the leader and the reason
+- Requires the bot to have **Ban Members** permission in the server — like Kick Members above, this is **not** part of the standard invite link or `/recruit-setup`'s permission check. Off by default for every clan unless a leader deliberately grants it.
+- Unbanning is not something KRAKEN does — that's a manual Server Settings → Bans action
 
 ---
 
