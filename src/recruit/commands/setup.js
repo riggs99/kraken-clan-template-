@@ -14,11 +14,19 @@ function isValidDiscordId(id) {
 const PERMISSION_FLAG_NAMES = new Map(Object.entries(PermissionFlagsBits).map(([name, flag]) => [flag, name]));
 
 // Applies each overwrite entry individually via edit() rather than replacing the whole
-// permission-overwrite list via set(). This is the difference between "make sure these
-// specific roles have exactly this access" and "erase every overwrite on this channel that
-// isn't in this list" — the latter would silently wipe out anything a leader (or another bot)
-// added by hand that KRAKEN doesn't know about, every single time /recruit-setup re-runs,
-// even though re-running it is supposed to be safe.
+// permission-overwrite list via set(). set() would erase every overwrite on the channel
+// that isn't in this list — silently wiping out anything a leader (or another bot) added
+// by hand that KRAKEN doesn't know about, every single time /recruit-setup re-runs, even
+// though re-running it is supposed to be safe.
+//
+// Note on what edit() actually guarantees (verified against discord.js's own source,
+// PermissionOverwriteManager#upsert): it merges into that role's existing overwrite bits
+// rather than fully resetting them — the listed permissions are always forced to exactly
+// what's specified here, but a permission bit NOT listed for a role KRAKEN manages (e.g. a
+// leader manually granting roleLeaders an extra permission on #kraken-ops) is left as-is,
+// not cleared. That's intentional, not a gap: it's the same "never silently wipe a manual
+// grant" principle this function exists for in the first place, just also applying to
+// KRAKEN's own managed roles, not only the ones it doesn't touch.
 async function applyOverwrites(channel, overwrites, reason) {
   if (!channel?.permissionOverwrites?.edit) return;
   for (const entry of overwrites) {

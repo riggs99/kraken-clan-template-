@@ -156,18 +156,20 @@ export async function handleBanMemberConfirm(interaction, ctx, targetDiscordId) 
   // below while still telling the leader "already gone, all clean." A ban can still be applied
   // to someone not currently in the server, so this only affects whether the role strip runs.
   const { state: membershipState, member } = await confirmMemberGone(interaction.guild, discordId);
+  let roleCorrectionSkipped = false;
   if (member) {
     // Strip managed tier roles and apply the remove role BEFORE attempting the ban — not just
     // a courtesy. If the ban itself fails (bot role hierarchy, missing permission on this
     // specific target, etc.) this is the only thing standing between "leader marked them
     // removed" and the evaluator's next run silently re-including them as an active member.
     try {
-      await applyRemovedRoleState({
+      const offboard = await applyRemovedRoleState({
         member,
         runtime,
         reason: `KRAKEN emergency ban by ${interaction.user.tag}: ${reason}`,
         db,
       });
+      roleCorrectionSkipped = offboard?.skipped === 'remove-role-missing';
     } catch (e) {
       console.error(`[RECRUIT] Emergency role correction failed for <@${discordId}>:`, formatErrorForLog(e));
     }
@@ -209,6 +211,7 @@ export async function handleBanMemberConfirm(interaction, ctx, targetDiscordId) 
   if (waitlistNotified) notes.push('clan has space — next waitlist member notified');
   if (membershipState === 'gone' && !banError) notes.push('was not found in the server — banned anyway to prevent rejoining');
   if (membershipState === 'unknown') notes.push('⚠️ could not confirm Discord membership (fetch failed) before the ban attempt — verify manually');
+  if (roleCorrectionSkipped) notes.push('⚠️ remove role is not configured — tier roles could not be stripped as a fallback; run /recruit-setup or configure roles.removeRoleId');
   if (banError) notes.push(`⚠️ ban failed: ${banError} — check bot role hierarchy and that Ban Members is actually granted`);
 
   const embed = new EmbedBuilder()
