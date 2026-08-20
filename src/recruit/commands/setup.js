@@ -9,6 +9,37 @@ function isValidDiscordId(id) {
   return typeof id === 'string' && /^\d{17,20}$/.test(id);
 }
 
+// Reverse lookup from a PermissionFlagsBits value back to its string name (what
+// PermissionOverwriteManager#edit expects as option keys) — built once from the same object.
+const PERMISSION_FLAG_NAMES = new Map(Object.entries(PermissionFlagsBits).map(([name, flag]) => [flag, name]));
+
+// Applies each overwrite entry individually via edit() rather than replacing the whole
+// permission-overwrite list via set(). This is the difference between "make sure these
+// specific roles have exactly this access" and "erase every overwrite on this channel that
+// isn't in this list" — the latter would silently wipe out anything a leader (or another bot)
+// added by hand that KRAKEN doesn't know about, every single time /recruit-setup re-runs,
+// even though re-running it is supposed to be safe.
+async function applyOverwrites(channel, overwrites, reason) {
+  if (!channel?.permissionOverwrites?.edit) return;
+  for (const entry of overwrites) {
+    if (!entry?.id) continue;
+    const options = {};
+    for (const flag of entry.allow ?? []) {
+      const name = PERMISSION_FLAG_NAMES.get(flag);
+      if (name) options[name] = true;
+    }
+    for (const flag of entry.deny ?? []) {
+      const name = PERMISSION_FLAG_NAMES.get(flag);
+      if (name) options[name] = false;
+    }
+    try {
+      await channel.permissionOverwrites.edit(entry.id, options, { reason });
+    } catch {
+      // ignore per-entry overwrite failures — never block the rest of setup over one role
+    }
+  }
+}
+
 export const command = {
   name: 'recruit-setup',
   description: 'One-time setup for Recruit HQ (creates channels/roles and stores IDs)',
@@ -153,13 +184,7 @@ async function findOrCreateManagedChannel(guild, { configuredId, storedId, creat
     ?? await resolveTextChannelById(guild, storedId)
     ?? await createTextChannel(guild, createName, overwrites, parentId);
 
-  try {
-    if (channel.permissionOverwrites?.set) {
-      await channel.permissionOverwrites.set(overwrites, enforceReason);
-    }
-  } catch {
-    // ignore overwrite update failures
-  }
+  await applyOverwrites(channel, overwrites, enforceReason);
   return channel;
 }
 
@@ -274,14 +299,8 @@ export async function handleSetup(interaction, ctx) {
     { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
   ];
   const welcomeChannel = await findOrCreateTextChannelById(guild, existing?.channels?.welcomeChannelId, 'welcome', welcomeOverwrites);
-  try {
-    // Enforce overwrites even if the channel already existed (prevents modal submit "Something went wrong" due to bot lacking SendMessages).
-    if (welcomeChannel?.permissionOverwrites?.set) {
-      await welcomeChannel.permissionOverwrites.set(welcomeOverwrites, 'KRAKEN Recruit setup: enforce welcome permissions');
-    }
-  } catch {
-    // ignore overwrite update failures
-  }
+  // Enforce overwrites even if the channel already existed (prevents modal submit "Something went wrong" due to bot lacking SendMessages).
+  await applyOverwrites(welcomeChannel, welcomeOverwrites, 'KRAKEN Recruit setup: enforce welcome permissions');
   const configuredDecisionsId = String(recruitConfig?.channels?.decisionsChannelId ?? '');
   const configuredDecisionsChannel = await resolveTextChannelById(guild, configuredDecisionsId);
   const decisionsChannel = configuredDecisionsChannel ?? await findOrCreateTextChannelById(guild, existing?.channels?.decisionsChannelId, 'kraken-decisions-leaders', decisionsOverwrites, leadersCategory.id);
@@ -303,18 +322,16 @@ export async function handleSetup(interaction, ctx) {
   const publicDecisionsChannel = publicDecisionsConfigured
     ?? await resolveTextChannelById(guild, existing?.channels?.publicDecisionsChannelId)
     ?? await createTextChannel(guild, 'kraken-decisions', publicDecisionsOverwrites, null);
+  // Safe to re-affirm overwrites + top-level placement now: publicDecisionsChannel is
+  // always either our own channel (resolved by ID) or freshly created — never a channel
+  // we adopted from elsewhere.
+  await applyOverwrites(publicDecisionsChannel, publicDecisionsOverwrites, 'KRAKEN Recruit setup: enforce kraken-decisions (members-only) permissions');
   try {
-    // Safe to re-affirm overwrites + top-level placement now: publicDecisionsChannel is
-    // always either our own channel (resolved by ID) or freshly created — never a channel
-    // we adopted from elsewhere.
-    if (publicDecisionsChannel?.permissionOverwrites?.set) {
-      await publicDecisionsChannel.permissionOverwrites.set(publicDecisionsOverwrites, 'KRAKEN Recruit setup: enforce kraken-decisions (members-only) permissions');
-    }
     if (!publicDecisionsConfigured && publicDecisionsChannel?.parentId !== null) {
       await publicDecisionsChannel.setParent(null, { lockPermissions: false, reason: 'KRAKEN Recruit setup: kraken-decisions is members-only, not a leaders-only channel' });
     }
   } catch {
-    // ignore overwrite update failures
+    // ignore parent update failures
   }
 
   // Break request channel (read-only panel; breaks start immediately and leaders acknowledge in
@@ -327,14 +344,8 @@ export async function handleSetup(interaction, ctx) {
     { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
   ];
   const onBreakChannel = await findOrCreateTextChannelById(guild, existing?.channels?.onBreakChannelId, 'on-a-break', breakOverwrites);
-  try {
-    // Ensure overwrites are correct even if the channel already existed (fixes "Missing Access" after re-invite/role changes).
-    if (onBreakChannel?.permissionOverwrites?.set) {
-      await onBreakChannel.permissionOverwrites.set(breakOverwrites, 'KRAKEN Recruit setup: enforce on-a-break permissions');
-    }
-  } catch {
-    // ignore overwrite update failures
-  }
+  // Ensure overwrites are correct even if the channel already existed (fixes "Missing Access" after re-invite/role changes).
+  await applyOverwrites(onBreakChannel, breakOverwrites, 'KRAKEN Recruit setup: enforce on-a-break permissions');
 
   // Leaders-only ops + logs channels (no pings; operators use these as control surface).
   // No name-matching — see the comment on findOrCreateTextChannelById above.
@@ -348,17 +359,11 @@ export async function handleSetup(interaction, ctx) {
     configuredRemovalQueueChannel ??
     (await resolveTextChannelById(guild, existing?.channels?.removalQueueChannelId)) ??
     await createTextChannel(guild, 'removal-queue', leadersOnlyOverwrites, leadersCategory.id);
+  // Enforce leader-only visibility even if channels already existed (prevents new members from landing here).
+  await applyOverwrites(opsChannel, leadersOnlyOverwrites, 'KRAKEN Recruit setup: enforce kraken-ops permissions');
+  await applyOverwrites(logsChannel, leadersOnlyOverwrites, 'KRAKEN Recruit setup: enforce logs permissions');
+  await applyOverwrites(removalQueueChannel, leadersOnlyOverwrites, 'KRAKEN Recruit setup: enforce removal queue permissions');
   try {
-    // Enforce leader-only visibility even if channels already existed (prevents new members from landing here).
-    if (opsChannel?.permissionOverwrites?.set) {
-      await opsChannel.permissionOverwrites.set(leadersOnlyOverwrites, 'KRAKEN Recruit setup: enforce kraken-ops permissions');
-    }
-    if (logsChannel?.permissionOverwrites?.set) {
-      await logsChannel.permissionOverwrites.set(leadersOnlyOverwrites, 'KRAKEN Recruit setup: enforce logs permissions');
-    }
-    if (removalQueueChannel?.permissionOverwrites?.set) {
-      await removalQueueChannel.permissionOverwrites.set(leadersOnlyOverwrites, 'KRAKEN Recruit setup: enforce removal queue permissions');
-    }
     // lockPermissions: false is required — setParent defaults to syncing (overwriting) a
     // channel's permissions to match its new category, which would wipe the explicit
     // overwrites just (re-)enforced above.
