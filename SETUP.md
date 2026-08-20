@@ -169,16 +169,15 @@ builds the entire Recruit HQ automatically:
   internal decision log), `#kraken-ops`, `#logs`, `#removal-queue` — these
   are all bot-managed data/log surfaces, not a place to actually chat
 - `#general` (member chat) — created if it doesn't already exist (or
-  adopted by name-match / `channels.memberChatChannelId`) —
+  adopted by ID via `channels.memberChatChannelId`) —
   members-only (`kraken-member` + `leaders`)
 - `#leaders-chat` (plain leaders-only chat, separate from the leaders
   category's bot-managed data/log channels above) — created if missing
-  (or adopted by name-match on `leaders-channel` / `leaders-chat`, or
-  `channels.leadersChatChannelId`)
-- `#waiting-list` — created if missing (or adopted by name-match on
-  `waiting-list` / `waitlist`, or `channels.waitingListChannelId`) —
+  (or adopted by ID via `channels.leadersChatChannelId`)
+- `#waiting-list` — created if missing (or adopted by ID via
+  `channels.waitingListChannelId`) —
   read-only queue panel, gated to the `waitlist` role
-- `#appeals` — created if missing (or adopted by name-match /
+- `#appeals` — created if missing (or adopted by ID via
   `channels.appealsChannelId`) — read-only for members
   (`kraken-member` + `leaders`), same pattern as `#kraken-decisions`;
   members submit via the **Submit Appeal** button, never by typing
@@ -199,6 +198,17 @@ itself. The bot's own role is the only exception; see
 hoisted so members group by their standing in the sidebar. Every channel
 and role above is created and permission-enforced automatically — there
 are no manual permission steps left after running this command.
+
+**Already have a `leaders` role, or any of these roles, from before KRAKEN?**
+Same mechanism as the channel IDs above: fill in the matching field under
+`roles` in `config/recruit.config.json` — `leadersRoleId`, `memberRoleId`,
+`warcoreRoleId`, `underwatchRoleId`, `onBreakRoleId` (plus the
+`newArrivalRoleId` / `probationRoleId` / `removeRoleId` / `waitlistRoleId`
+fields already required above) — with the existing role's ID **before**
+running `/recruit-setup` for the first time. KRAKEN adopts it and manages
+its permissions/hoisting from then on, instead of creating a second,
+identically-named role next to it. Leave a field blank and KRAKEN creates
+that role fresh, same as always.
 
 It stores every channel/role ID in SQLite, so it's **safe to re-run** — it
 reuses what it already made (by ID, not name) and never creates duplicates. If

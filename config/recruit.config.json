@@ -19,7 +19,12 @@
     "newArrivalRoleId": "",
     "probationRoleId": "",
     "removeRoleId": "",
-    "waitlistRoleId": ""
+    "waitlistRoleId": "",
+    "leadersRoleId": "",
+    "memberRoleId": "",
+    "warcoreRoleId": "",
+    "underwatchRoleId": "",
+    "onBreakRoleId": ""
   },
   "warServer": { "inviteUrl": "PUT_YOUR_DISCORD_INVITE_URL_HERE" },
   "welcomeImagePath": "",

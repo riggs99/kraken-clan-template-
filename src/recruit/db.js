@@ -234,6 +234,17 @@ export function syncRecruitRuntimeFromConfig(db, { recruitConfig, opsConfig } = 
     ['roles.probationRoleId', recruitConfig?.roles?.probationRoleId],
     ['roles.removeRoleId', recruitConfig?.roles?.removeRoleId],
     ['roles.waitlistRoleId', recruitConfig?.roles?.waitlistRoleId],
+    // These five were missing entirely — meaning a clan that already has its own "leaders"
+    // role (or any of the other tier roles) had no way to point KRAKEN at it. Without a
+    // config override, /recruit-setup can only ever find a role by a stored ID from a
+    // previous KRAKEN run (name-matching was deliberately removed as unsafe on a real
+    // server), so it would silently create a second, separately-managed role with the same
+    // name instead of adopting the clan's existing one.
+    ['roles.leadersRoleId', recruitConfig?.roles?.leadersRoleId],
+    ['roles.memberRoleId', recruitConfig?.roles?.memberRoleId],
+    ['roles.warcoreRoleId', recruitConfig?.roles?.warcoreRoleId],
+    ['roles.underwatchRoleId', recruitConfig?.roles?.underwatchRoleId],
+    ['roles.onBreakRoleId', recruitConfig?.roles?.onBreakRoleId],
   ];
 
   for (const [key, value] of [...channelMappings, ...roleMappings]) {
