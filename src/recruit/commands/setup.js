@@ -308,6 +308,10 @@ async function handleSetupInner(interaction, ctx) {
   const leadersCategory = (await resolveCategoryById(guild, existing?.channels?.leadersCategoryId))
     ?? await createCategory(guild, 'leaders', leadersOnlyOverwrites);
   setRecruitSetting(db, 'channels.leadersCategoryId', leadersCategory.id);
+  // Every channel inside this category re-enforces its own overwrites on every run — the
+  // category's own overwrite needs the same treatment, or a leader manually changing it
+  // (e.g. accidentally opening it to @everyone) would never self-heal like everything else here.
+  await applyOverwrites(leadersCategory, leadersOnlyOverwrites, 'KRAKEN Recruit setup: enforce leaders category permissions');
 
   const decisionsOverwrites = [
     { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
@@ -334,6 +338,10 @@ async function handleSetupInner(interaction, ctx) {
   const configuredDecisionsId = String(recruitConfig?.channels?.decisionsChannelId ?? '');
   const configuredDecisionsChannel = await resolveTextChannelById(guild, configuredDecisionsId);
   const decisionsChannel = configuredDecisionsChannel ?? await findOrCreateTextChannelById(guild, existing?.channels?.decisionsChannelId, 'kraken-decisions-leaders', decisionsOverwrites, leadersCategory.id);
+  // Enforce even if the channel already existed — every other channel in this file
+  // re-affirms its overwrites on every run; this one was previously only ever set at the
+  // moment of creation and never touched again on a re-run.
+  await applyOverwrites(decisionsChannel, decisionsOverwrites, 'KRAKEN Recruit setup: enforce kraken-decisions-leaders permissions');
 
   // Read-only channel for daily KRAKEN decisions (no pings). Visible to actual members
   // (kraken-member, granted the moment /apply succeeds) + leaders — not to new-arrival/
