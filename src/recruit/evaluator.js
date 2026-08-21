@@ -1211,6 +1211,15 @@ async function runPostBreakEnforcement({ client, guild, db, runtime, history, lo
     if (isValidDiscordId(underwatchRoleId)) {
       const m = await guild.members.fetch(discordId).catch(() => null);
       if (m) {
+        // Suppressed like every other bot-initiated tier role change in this file (see the
+        // daily evaluation loop above) — without this, the GuildMemberUpdate this triggers gets
+        // picked up by manual-role-sync.js as if a LEADER had manually changed the role,
+        // mislabeling this fully-automated escalation as last_verdict='manual_override' in the
+        // profile and posting a second, confusing "Manual role sync" message right next to the
+        // correct decision message below. It also used to be the ONLY thing that ever created
+        // this member's underwatch state row for this path — suppressing it without adding the
+        // explicit upsertUnderwatchState below would silently stop that from happening at all.
+        suppressManualTierSync(db, discordId);
         const { ok } = await applyRolesVerified(m, { add: underwatchRoleId, reason: 'Post-break inactivity (no war activity detected)' });
         roleApplied = ok;
       }
@@ -1224,6 +1233,24 @@ async function runPostBreakEnforcement({ client, guild, db, runtime, history, lo
       // role add, instead of silently losing the escalation forever the way
       // the unconditional writes below used to.
       continue;
+    }
+
+    // Mirrors the daily evaluation loop's own "entering underwatch" state handling further
+    // below — preserves an existing paused clock (e.g. from a prior underwatch stint) instead
+    // of always starting fresh, now that this is no longer implicitly created as a side effect
+    // of the (suppressed) manual-role-sync listener above.
+    {
+      const existingUw = getUnderwatchState(db, discordId);
+      const pauseResolved = existingUw && existingUw.pauseStartedAt != null
+        ? { pauseAccumMs: (existingUw.pauseAccumMs ?? 0) + Math.max(0, now - existingUw.pauseStartedAt), pauseStartedAt: null }
+        : { pauseAccumMs: existingUw?.pauseAccumMs ?? 0, pauseStartedAt: existingUw?.pauseStartedAt ?? null };
+      upsertUnderwatchState(db, {
+        discordId,
+        startedAt: existingUw?.startedAt && existingUw.startedAt > 0 ? existingUw.startedAt : now,
+        pauseAccumMs: pauseResolved.pauseAccumMs,
+        pauseStartedAt: pauseResolved.pauseStartedAt,
+        lastNotifiedAt: existingUw?.lastNotifiedAt ?? null,
+      });
     }
 
     db.prepare(`
