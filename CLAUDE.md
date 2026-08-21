@@ -219,7 +219,9 @@ during the config-extraction pass could silently reintroduce any of them:
   while a member is on an active break.
 - Any bot-initiated role change must suppress the manual-role-sync listener
   first, or the bot's own write double-processes itself through that
-  listener.
+  listener. (This rule was found violated once, for real, in
+  `evaluator.js`'s post-break underwatch escalation — see the deep-audit
+  section below.)
 - WAL-mode SQLite needs an explicit `wal_checkpoint(TRUNCATE)` before any raw
   file-copy backup, or recent writes sitting in the `-wal` file get missed.
 - `player_tag` is stored without a leading `#`, everywhere, no exceptions.
@@ -286,6 +288,100 @@ The simplest first test doesn't need real hosting infrastructure set up yet
 (see `docs/multi-clan-hosting.md` for that, once this passes) — running
 `node src/index.js` locally, in this folder, against a free throwaway Discord
 test server is enough to prove the genericized code actually works.
+
+## Post-launch deep audit (2026-08-21) — full-codebase coverage check
+
+The genericization audit above and the two `/code-review` passes both operate
+on a diff (recent commits, or a branch vs `main`). That leaves a real blind
+spot: this repo's history is one big bulk-copy commit (`c4ed2ef`, the entire
+original codebase) plus a long tail of small targeted commits — meaning any
+file untouched since that first commit had **never** been through a
+diff-based review, no matter how many review passes ran. Checked concretely:
+
+```
+git log --name-only --format="" c4ed2ef..HEAD -- src scripts | sort -u
+```
+
+— only 21 of 62 `src`/`scripts` files had been touched by any commit since
+the bulk import. The other 41 had zero targeted scrutiny from any commit-diff
+review, ever. This section is what closing that gap turned up: every one of
+those 41 files was read start-to-end, cross-checked against the correctness
+rules above and against each other's call sites (e.g. every
+`applyRolesVerified`/`.roles.add`/`.roles.remove` call site was grepped and
+checked against `suppressManualTierSync`, not just spot-read in isolation).
+The 7 files the sections above already claimed were audited
+(`permissions.js`, `history.js`, `circuit-breaker.js`, `war-cycle.js`,
+`cr-api.js`, `backup.js`, `config/loadConfig.js`) were also re-read fresh in
+this pass rather than trusted on the strength of the earlier claim — all 7
+still match what's documented above, no drift found.
+
+### Real bugs found and fixed (all committed, all pushed)
+
+- **`src/recruit/evaluator.js` — the manual-role-sync suppression rule,
+  violated.** `runPostBreakEnforcement`'s escalation-to-underwatch role grant
+  never called `suppressManualTierSync`. Concretely: the `GuildMemberUpdate`
+  that role grant triggers was picked up by `manual-role-sync.js` as if a
+  *leader* had manually changed the role — mislabeling a fully-automated
+  post-break-inactivity escalation as `last_verdict='manual_override'` in the
+  member's profile (a wrong, permanent audit-trail entry), and posting a
+  second, confusing "Manual role sync" message to the decisions channel right
+  next to the correct "moved to underwatch — post-break inactivity" message
+  for the same event. Worse: this path had no `upsertUnderwatchState` call of
+  its own — it was silently relying on manual-role-sync's side effect to
+  create the underwatch state row *at all*. Fixed by adding the suppression
+  call plus an explicit `upsertUnderwatchState` (mirroring the daily
+  evaluation loop's own pattern, preserving an existing paused clock rather
+  than always resetting).
+- **`src/index.js` — recruit-guild component interactions had a silent
+  fallthrough.** An unrecognized button/modal in the recruit guild (one
+  `handleRecruitInteraction` doesn't match) fell through to the unrelated
+  OPS/WAR "kraken"-role permission gate — a different guild's permission
+  concept entirely — producing a confusing wrong-context denial, and it was
+  never logged, so there'd be zero server-side trail if it ever fired.
+  Separately, autocomplete for any recruit command *other than* `/status`
+  (there are none today, but a tag-autocomplete on `/recruit-history` or
+  `/recruit-add-member` would be a natural next feature) would have silently
+  returned nothing to Discord — dead dropdown, no error, no log. Both fixed:
+  recruit-guild component interactions are now a hard boundary (log +
+  sensible reply/`interaction.respond([])` on anything unrecognized, never
+  fall through). Also added `client.on(Events.Error/ShardError, ...)` — a
+  classic discord.js gotcha: `Client` is a Node `EventEmitter`, and an
+  `'error'` event with zero listeners is thrown by Node itself and crashes
+  the whole process. Every other failure path in this file logs and keeps
+  running; this was the one gap that could take the bot fully offline on a
+  transient websocket/REST error.
+- **`src/risk-score.js` — repeat-offender flag droppable from the display.**
+  `reasons.slice(0, 4)` truncated the human-readable reasons list, but the
+  `🔁 Repeat offender` reason was always pushed *last* (after up to 5 other
+  possible reasons) — meaning members tripping the most other flags were the
+  most likely to have that specific note silently cut from what leaders see.
+  The underlying `repeatOffender` boolean was already correct everywhere it
+  actually drives decisions (`promotions.js`, `analytics.js`,
+  `evaluator.js`'s OPS-weak-range check) — display-only bug. Fixed by
+  promoting it to the front of the list before truncating (safe: it can
+  never coexist with the grace-period reason, so nothing gets displaced).
+
+### Flagged, not fixed — needs a product decision, not a code fix
+
+- **`src/metadata.js`'s warnings/notes/milestones system is half-built.**
+  `addWarning`/`addNote`/`addMilestone`/`clearWarnings` have zero callers
+  anywhere in the codebase — there is no command that lets a leader ever
+  create one. But the *display* side is fully wired into `/ops` in 4 places
+  (`src/ops.js`: overview-tab rows showing `📝{warnings}/{notes}`, the player
+  detail panel, the recommendation reason string). Every real clan running
+  this bot sees `📝0/0` next to every member, forever, with no way to
+  populate it. Either build the missing add-warning/add-note command, or
+  strip the dead display — deliberately left as an open decision rather than
+  guessed at.
+
+### Cosmetic-only, no behavior change
+
+- `src/recruit/policy.js`'s `'TWO_WAR_INACTIVE'` reason-code constant
+  actually labels a **one**-week (`sum7`) inactivity check, not two. Used
+  consistently as an opaque display key in exactly 3 places (`policy.js`
+  itself, `war-board.js`), and every human-facing string next to it correctly
+  says "1 full war week" — zero behavioral impact, just a confusing name for
+  a future reader. Left as-is.
 
 ## Shared helpers — reuse these, don't reinvent them
 
