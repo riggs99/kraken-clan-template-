@@ -1070,6 +1070,11 @@ function buildWarnNoteModal({ kind, tab, windowDays, page, playerTag, ownerId })
 // panel message the warn/note button was attached to (same defer-then-editReply pattern
 // the main handler uses for every other button/select).
 async function handleWarnNoteSubmit(interaction) {
+  // Tracks whether the write itself completed, so the catch below can report an accurate
+  // message regardless of which stage actually failed — writing then re-rendering are two
+  // separate risks, and conflating them either way (claiming a save failed when it didn't,
+  // or vice versa) is worse than just tracking the truth explicitly.
+  let written = false;
   try {
     const parsed = parseOpsAction(interaction.customId) ?? {};
 
@@ -1088,12 +1093,21 @@ async function handleWarnNoteSubmit(interaction) {
       return interaction.reply({ content: 'Text is required.', flags: MessageFlags.Ephemeral });
     }
 
+    // Acknowledge BEFORE writing, not after — deferUpdate() only flips interaction.deferred
+    // to true once its own REST call actually succeeds (confirmed against discord.js's
+    // InteractionResponses source), so writing first meant a transient failure on this
+    // call alone would land in the catch block below with deferred still false, reporting
+    // "could not save" to the leader even though addWarning/addNote had already succeeded —
+    // inviting a resubmit that adds the same warning/note twice, since neither has any
+    // idempotency guard. Deferring first means the only way to reach the write below is a
+    // successful acknowledgment, so a failure from here on is a real, accurately-reported one.
+    await interaction.deferUpdate();
+
     const isWarn = interaction.customId.startsWith('ops:warnSubmit:');
     const issuedBy = interaction.user?.tag ?? String(interaction.user?.id ?? 'unknown');
     if (isWarn) addWarning(parsed.playerTag, text, issuedBy);
     else addNote(parsed.playerTag, text, issuedBy);
-
-    await interaction.deferUpdate();
+    written = true;
 
     const state = {
       tab: parsed.tab,
@@ -1110,10 +1124,13 @@ async function handleWarnNoteSubmit(interaction) {
     return interaction.editReply(payload);
   } catch (err) {
     console.error('[OPS] warn/note submit error:', formatErrorForLog(err));
+    const content = written
+      ? 'Saved, but the panel could not be refreshed — reopen with `/ops` to see it.'
+      : 'Could not save — check logs.';
     if (interaction.deferred || interaction.replied) {
-      return interaction.editReply({ content: 'Could not save — check logs.' });
+      return interaction.editReply({ content });
     }
-    return interaction.reply({ content: 'Could not save — check logs.', flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content, flags: MessageFlags.Ephemeral });
   }
 }
 
