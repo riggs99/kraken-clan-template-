@@ -52,6 +52,14 @@ console.log(`RECRUIT config loaded (enabled=${Boolean(recruitConfig?.enabled)})`
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 
+// discord.js's Client is a Node EventEmitter — an 'error' event with zero listeners is
+// thrown by Node itself and crashes the whole process (a well-known discord.js gotcha,
+// distinct from anything this codebase's own logic can cause). Every other failure path
+// in this file logs and keeps running; without these, a transient websocket/REST error
+// would take the bot fully offline instead.
+client.on(Events.Error, e => console.error('[DISCORD CLIENT ERROR]', formatErrorForLog(e)));
+client.on(Events.ShardError, e => console.error('[DISCORD SHARD ERROR]', formatErrorForLog(e)));
+
 function isRecruitOpsAuthorized(interaction) {
   try {
     if (!recruitConfig?.enabled) return false;
@@ -132,14 +140,24 @@ client.once(Events.ClientReady, async c => {
 
 client.on(Events.InteractionCreate, async interaction => {
   try {
-    // Recruit components (buttons/modals) and autocomplete requests must bypass OPS
-    // auth and be handled only in Recruit HQ — none of these are chat-input commands,
+    // Recruit components (buttons/select menus/modals) and autocomplete requests must bypass
+    // OPS auth and be handled only in Recruit HQ — none of these are chat-input commands,
     // so without this they'd fall straight through to the isChatInputCommand() guard
     // below and get silently dropped (Discord shows the user an empty/stuck response).
     if (recruitConfig?.enabled && interaction.guildId === String(recruitConfig.recruitGuildId)) {
-      if (interaction.isButton() || interaction.isModalSubmit() || interaction.isAutocomplete()) {
+      if (interaction.isButton() || interaction.isModalSubmit() || interaction.isAutocomplete() || interaction.isStringSelectMenu()) {
         const handled = await handleRecruitInteraction(interaction, recruitConfig);
         if (handled) return;
+
+        // This is Recruit HQ's territory exclusively — an interaction here that
+        // handleRecruitInteraction doesn't recognize must never fall through to the OPS/WAR
+        // "kraken" role gate below (a different guild's permission concept entirely, which
+        // would show a confusing, wrong-sounding denial). Logged because otherwise there's
+        // zero server-side trail if this ever fires — a leader reporting "the bot says I
+        // don't have permission" would be undiagnosable without it.
+        console.error(`[RECRUIT] Unhandled ${interaction.type} in recruit guild: customId=${interaction.customId ?? '(none)'} command=${interaction.commandName ?? '(none)'}`);
+        if (interaction.isAutocomplete()) return interaction.respond([]).catch(() => {});
+        return interaction.reply({ content: 'This interaction is no longer valid — try the command again.', flags: MessageFlags.Ephemeral });
       }
     }
 

@@ -272,6 +272,18 @@ export function computeHistoryWeightedRisk(history, members, opts = {}) {
 
     if (repeatOffender) reasons.push(`🔁 Repeat offender (${repeatHits}/${repeatWindowDays} days)`);
 
+    // Promoted to the front before truncation below — repeatOffender can never coexist with
+    // inGrace (it's forced false there), so this never displaces the grace-period notice.
+    // Without this, a member tripping 4+ of the window-specific reasons above (war/fame/deck/
+    // donation/inactivity) silently loses the repeat-offender flag to reasons.slice(0, 4) —
+    // exactly the members with the most going on wrong are the ones most likely to have it cut,
+    // even though every actual decision (promotions.js, analytics.js, evaluator.js) reads the
+    // repeatOffender boolean directly and is unaffected — this only fixes what leaders see.
+    const repeatIdx = reasons.findIndex(r => r.startsWith('🔁'));
+    const orderedReasons = repeatIdx > 0
+      ? [reasons[repeatIdx], ...reasons.slice(0, repeatIdx), ...reasons.slice(repeatIdx + 1)]
+      : reasons;
+
     return {
       ...m,
       historyDays: days,
@@ -291,7 +303,7 @@ export function computeHistoryWeightedRisk(history, members, opts = {}) {
       repeatHits,
       repeatOffender,
       repeatWindowDays,
-      reasons: reasons.slice(0, 4),
+      reasons: orderedReasons.slice(0, 4),
       series: s,
     };
   });
