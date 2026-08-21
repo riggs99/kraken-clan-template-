@@ -146,22 +146,32 @@ client.on(Events.InteractionCreate, async interaction => {
     // below and get silently dropped (Discord shows the user an empty/stuck response).
     if (recruitConfig?.enabled && interaction.guildId === String(recruitConfig.recruitGuildId)) {
       if (interaction.isButton() || interaction.isModalSubmit() || interaction.isAutocomplete() || interaction.isStringSelectMenu()) {
-        const handled = await handleRecruitInteraction(interaction, recruitConfig);
-        if (handled) return;
+        // ops:/war: components legitimately land here too — the standard single-server setup
+        // (SETUP.md) has opsGuildId === recruitGuildId, so /ops and /war's own buttons fire in
+        // this same guild. Those are NOT recruit's territory even though they share a guild;
+        // they're handled by the ops:/war: routing block further below, so this whole recruit
+        // dispatch (including the unhandled-fallback below) must leave them alone entirely.
+        const customId = typeof interaction.customId === 'string' ? interaction.customId : '';
+        const isOpsOrWarComponent = customId.startsWith('ops:') || customId.startsWith('war:');
 
-        // This is Recruit HQ's territory exclusively — an interaction here that
-        // handleRecruitInteraction doesn't recognize must never fall through to the OPS/WAR
-        // "kraken" role gate below (a different guild's permission concept entirely, which
-        // would show a confusing, wrong-sounding denial). Logged because otherwise there's
-        // zero server-side trail if this ever fires — a leader reporting "the bot says I
-        // don't have permission" would be undiagnosable without it.
-        console.error(`[RECRUIT] Unhandled ${interaction.type} in recruit guild: customId=${interaction.customId ?? '(none)'} command=${interaction.commandName ?? '(none)'}`);
-        if (interaction.isAutocomplete()) return interaction.respond([]).catch(() => {});
-        return interaction.reply({ content: 'This interaction is no longer valid — try the command again.', flags: MessageFlags.Ephemeral });
+        if (!isOpsOrWarComponent) {
+          const handled = await handleRecruitInteraction(interaction, recruitConfig);
+          if (handled) return;
+
+          // This IS Recruit HQ's territory (not ops:/war:, excluded above) — an interaction
+          // here that handleRecruitInteraction doesn't recognize must never fall through to
+          // the OPS/WAR "kraken" role gate below (a different guild's permission concept
+          // entirely, which would show a confusing, wrong-sounding denial). Logged because
+          // otherwise there's zero server-side trail if this ever fires — a leader reporting
+          // "the bot says I don't have permission" would be undiagnosable without it.
+          console.error(`[RECRUIT] Unhandled ${interaction.type} in recruit guild: customId=${customId || '(none)'} command=${interaction.commandName ?? '(none)'}`);
+          if (interaction.isAutocomplete()) return interaction.respond([]).catch(() => {});
+          return interaction.reply({ content: 'This interaction is no longer valid — try the command again.', flags: MessageFlags.Ephemeral });
+        }
       }
     }
 
-    if (interaction.isStringSelectMenu() || interaction.isButton()) {
+    if (interaction.isStringSelectMenu() || interaction.isButton() || interaction.isModalSubmit()) {
       const isOpsComponent = typeof interaction.customId === 'string' && interaction.customId.startsWith('ops:');
       const isWarComponent = typeof interaction.customId === 'string' && interaction.customId.startsWith('war:');
       const allowed = isAuthorized(interaction) || ((isOpsComponent || isWarComponent) && isRecruitOpsAuthorized(interaction));
