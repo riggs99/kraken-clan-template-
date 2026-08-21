@@ -361,18 +361,30 @@ still match what's documented above, no drift found.
   promoting it to the front of the list before truncating (safe: it can
   never coexist with the grace-period reason, so nothing gets displaced).
 
-### Flagged, not fixed — needs a product decision, not a code fix
-
-- **`src/metadata.js`'s warnings/notes/milestones system is half-built.**
-  `addWarning`/`addNote`/`addMilestone`/`clearWarnings` have zero callers
-  anywhere in the codebase — there is no command that lets a leader ever
-  create one. But the *display* side is fully wired into `/ops` in 4 places
-  (`src/ops.js`: overview-tab rows showing `📝{warnings}/{notes}`, the player
-  detail panel, the recommendation reason string). Every real clan running
-  this bot sees `📝0/0` next to every member, forever, with no way to
-  populate it. Either build the missing add-warning/add-note command, or
-  strip the dead display — deliberately left as an open decision rather than
-  guessed at.
+- **`src/metadata.js`'s warnings/notes system — was half-built, now closed
+  (2026-08-21).** `addWarning`/`addNote` had zero callers anywhere despite
+  the *display* side being fully wired into `/ops` in 4 places — every clan
+  saw `📝0/0` next to every member forever, with no way to populate it. Built
+  the missing UI rather than stripping the display: `/ops`'s actions-tab
+  player drilldown now shows **⚠️ Add Warning** / **📝 Add Note** buttons
+  (only once a player is selected) that open a modal for the text, write via
+  `addWarning`/`addNote`, and re-render the same drilldown view in place.
+  Two things worth knowing if this needs touching again:
+  - `opsHandler`'s button/select flow unconditionally calls
+    `interaction.deferUpdate()` before doing anything else — `showModal()`
+    must be an interaction's *first* response, so the warn/note buttons are
+    intercepted before that defer, not folded into the generic dispatch.
+  - `index.js` didn't route `ops:`/`war:`-prefixed **modal** submits to
+    `opsHandler`/`warHandler` at all before this — only buttons/selects were
+    checked. Fixed by adding `interaction.isModalSubmit()` to that
+    dispatch condition. Fixing this exposed a separate, more serious bug in
+    the SAME `index.js` block: the recruit-guild "unhandled interaction"
+    fallback added earlier this pass was catching `ops:`/`war:` components
+    too, since `opsGuildId === recruitGuildId` in the documented standard
+    single-server setup — meaning that earlier fix had (briefly, already
+    pushed) broken every `/ops`/`/war` button click on the default
+    deployment. Fixed by excluding `ops:`/`war:`-prefixed customIds from the
+    recruit dispatch entirely; see the routing-gap fix commit for detail.
 
 ### Cosmetic-only, no behavior change
 

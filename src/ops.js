@@ -1,12 +1,12 @@
 import path from 'node:path';
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, StringSelectMenuBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, ModalBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import Database from 'better-sqlite3';
 import { getClan, getCurrentRiverRace, getRiverRaceLog, shouldWarnDegraded } from './cr-api.js';
 import { buildMemberIntel, filterToCurrentClan } from './war-intel.js';
 import { upsertTodaySnapshot } from './history.js';
 import { computeHistoryWeightedRisk, HIGH_RISK_THRESHOLD } from './risk-score.js';
 import { calculateClanHealth } from './analytics.js';
-import { loadMetadata } from './metadata.js';
+import { loadMetadata, addWarning, addNote } from './metadata.js';
 import { cleanTag, daysSinceLastSeen, formatDaysAgo } from './util.js';
 import { formatErrorForLog } from './security.js';
 import { confirmMemberGone } from './permissions.js';
@@ -453,6 +453,19 @@ export function parseOpsAction(customId) {
       page: toPage(parts[4]),
       playerTag: null,
       ownerId: decodeOwnerIdToken(parts[5]),
+    };
+  }
+
+  // warnOpen/noteOpen (button) and warnSubmit/noteSubmit (modal) all share this same
+  // tab/windowDays/page/tag/ownerId shape so the drilldown view can be rebuilt exactly
+  // as it was once the modal round-trip completes.
+  if (parts[1] === 'warnOpen' || parts[1] === 'noteOpen' || parts[1] === 'warnSubmit' || parts[1] === 'noteSubmit') {
+    return {
+      tab: validTab(parts[2]),
+      windowDays: toWindowDays(parts[3]),
+      page: toPage(parts[4]),
+      playerTag: decodeTagToken(parts[5]),
+      ownerId: decodeOwnerIdToken(parts[6]),
     };
   }
 
@@ -1012,6 +1025,98 @@ function opsPlayerPickerRow(state, view) {
   return new ActionRowBuilder().addComponents(picker);
 }
 
+// Only shown on the actions tab once a player is actually selected in the drilldown —
+// warnings/notes are per-player, so there's nothing to attach one to otherwise.
+function opsWarnNoteRow(state, view) {
+  if (state.tab !== 'actions') return null;
+  if (!view.selectedTag) return null;
+  const tagToken = encodeTagToken(view.selectedTag);
+
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`ops:warnOpen:${state.tab}:${state.windowDays}:${state.page}:${tagToken}:${state.ownerId}`)
+      .setLabel('⚠️ Add Warning')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`ops:noteOpen:${state.tab}:${state.windowDays}:${state.page}:${tagToken}:${state.ownerId}`)
+      .setLabel('📝 Add Note')
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+// Builds the modal shown when a warn/note button is clicked — customId carries the same
+// tab/windowDays/page/tag/ownerId state as every other ops: action, so submitting it can
+// rebuild and edit the exact same drilldown view the button was clicked from.
+function buildWarnNoteModal({ kind, tab, windowDays, page, playerTag, ownerId }) {
+  const isWarn = kind === 'warn';
+  const tagToken = encodeTagToken(playerTag);
+  const modal = new ModalBuilder()
+    .setCustomId(`ops:${isWarn ? 'warnSubmit' : 'noteSubmit'}:${tab}:${windowDays}:${page}:${tagToken}:${ownerId}`)
+    .setTitle(isWarn ? 'Add Warning' : 'Add Note');
+
+  const input = new TextInputBuilder()
+    .setCustomId('text')
+    .setLabel(isWarn ? 'Warning reason' : 'Note text')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setMaxLength(500);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
+// Modal submit handler for warnSubmit/noteSubmit — a fully separate flow from the rest
+// of opsHandler below: writes to metadata.js, then rebuilds and edits the original OPS
+// panel message the warn/note button was attached to (same defer-then-editReply pattern
+// the main handler uses for every other button/select).
+async function handleWarnNoteSubmit(interaction) {
+  try {
+    const parsed = parseOpsAction(interaction.customId) ?? {};
+
+    if (parsed.ownerId && interaction.user?.id && interaction.user.id !== parsed.ownerId) {
+      return interaction.reply({
+        content: 'This OPS panel belongs to someone else. Run `/ops` to open your own panel.',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    if (!parsed.playerTag) {
+      return interaction.reply({ content: 'No player selected — pick one from the drilldown first.', flags: MessageFlags.Ephemeral });
+    }
+
+    const text = String(interaction.fields.getTextInputValue('text') ?? '').trim();
+    if (!text) {
+      return interaction.reply({ content: 'Text is required.', flags: MessageFlags.Ephemeral });
+    }
+
+    const isWarn = interaction.customId.startsWith('ops:warnSubmit:');
+    const issuedBy = interaction.user?.tag ?? String(interaction.user?.id ?? 'unknown');
+    if (isWarn) addWarning(parsed.playerTag, text, issuedBy);
+    else addNote(parsed.playerTag, text, issuedBy);
+
+    await interaction.deferUpdate();
+
+    const state = {
+      tab: parsed.tab,
+      windowDays: parsed.windowDays,
+      page: parsed.page,
+      playerTag: parsed.playerTag,
+      ownerId: parsed.ownerId ?? interaction.user?.id ?? null,
+    };
+    const data = await loadOpsData(state.windowDays);
+    const roleCtx = await buildRoleContext(interaction.guild, data.members);
+    const view = buildTabView(state.tab, data, state.page, state.playerTag, roleCtx);
+    state.playerTag = cleanTag(view.selectedTag ?? state.playerTag);
+    const payload = buildOpsPayload({ state, data, view });
+    return interaction.editReply(payload);
+  } catch (err) {
+    console.error('[OPS] warn/note submit error:', formatErrorForLog(err));
+    if (interaction.deferred || interaction.replied) {
+      return interaction.editReply({ content: 'Could not save — check logs.' });
+    }
+    return interaction.reply({ content: 'Could not save — check logs.', flags: MessageFlags.Ephemeral });
+  }
+}
+
 function buildOpsPayload({ state, data, view }) {
   const winLabel = state.windowDays === 1 ? 'Today' : `${state.windowDays} days`;
   const tabColors = {
@@ -1043,6 +1148,7 @@ function buildOpsPayload({ state, data, view }) {
       opsSubRow(stateForButtons),
       opsPagingRow(stateForButtons, { ...paging, page: view.page, totalPages: view.totalPages }),
       ...(opsPlayerPickerRow(stateForButtons, view) ? [opsPlayerPickerRow(stateForButtons, view)] : []),
+      ...(opsWarnNoteRow(stateForButtons, view) ? [opsWarnNoteRow(stateForButtons, view)] : []),
     ].filter(Boolean),
     allowedMentions: { parse: [] },
   };
@@ -1050,6 +1156,14 @@ function buildOpsPayload({ state, data, view }) {
 
 export async function opsHandler(interaction) {
   try {
+    // Warn/note modal submissions are a fully separate flow (data write, then edit the
+    // original panel) — handled entirely by handleWarnNoteSubmit, never reaching the
+    // generic component dispatch below.
+    if (interaction.isModalSubmit() && typeof interaction.customId === 'string'
+      && (interaction.customId.startsWith('ops:warnSubmit:') || interaction.customId.startsWith('ops:noteSubmit:'))) {
+      return await handleWarnNoteSubmit(interaction);
+    }
+
     const isComponent = interaction.isButton() || interaction.isStringSelectMenu();
 
     const parsedForAuth = isComponent
@@ -1067,6 +1181,24 @@ export async function opsHandler(interaction) {
         content: 'This OPS panel belongs to someone else. Run `/ops` to open your own panel.',
         flags: MessageFlags.Ephemeral,
       });
+    }
+
+    // Warn/note buttons open a modal instead of the usual defer-then-rebuild flow below —
+    // showModal() must be an interaction's FIRST response, so this has to run before the
+    // deferUpdate() every other button/select triggers unconditionally just below.
+    if (interaction.isButton() && typeof interaction.customId === 'string'
+      && (interaction.customId.startsWith('ops:warnOpen:') || interaction.customId.startsWith('ops:noteOpen:'))) {
+      if (!parsedForAuth.playerTag) {
+        return interaction.reply({ content: 'No player selected — pick one from the drilldown first.', flags: MessageFlags.Ephemeral });
+      }
+      return interaction.showModal(buildWarnNoteModal({
+        kind: interaction.customId.startsWith('ops:warnOpen:') ? 'warn' : 'note',
+        tab: parsedForAuth.tab,
+        windowDays: parsedForAuth.windowDays,
+        page: parsedForAuth.page,
+        playerTag: parsedForAuth.playerTag,
+        ownerId: parsedForAuth.ownerId ?? interaction.user?.id ?? null,
+      }));
     }
 
     // Interactions must be acknowledged quickly (<=3s).
