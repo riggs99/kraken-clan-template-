@@ -140,6 +140,36 @@ export function initDb() {
       confirmed_at INTEGER,
       pinged_at    INTEGER
     );
+
+    -- Keyed by player_tag (not discord_id) to match how /ops already identifies players —
+    -- the main-server dashboard tracks the clan roster by tag first, Discord linkage is
+    -- secondary and often absent (a clan member who hasn't linked yet still needs to be
+    -- warnable). No FK to profiles: profiles.player_tag has no UNIQUE constraint (discord_id
+    -- is the real key there), so a real foreign key isn't valid SQLite here anyway. Previously
+    -- lived in a separate data/metadata.json file, disconnected from every other player-state
+    -- table — moved here so all player state lives in one place instead of split across a
+    -- second, unrelated storage system.
+    CREATE TABLE IF NOT EXISTS player_warnings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_tag TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      issued_by TEXT,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_player_warnings_player_tag
+      ON player_warnings(player_tag);
+
+    CREATE TABLE IF NOT EXISTS player_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_tag TEXT NOT NULL,
+      note TEXT NOT NULL,
+      issued_by TEXT,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_player_notes_player_tag
+      ON player_notes(player_tag);
   `);
 
   // Migrate existing waitlist rows that lack the new columns

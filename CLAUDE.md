@@ -369,6 +369,18 @@ still match what's documented above, no drift found.
   player drilldown now shows **⚠️ Add Warning** / **📝 Add Note** buttons
   (only once a player is selected) that open a modal for the text, write via
   `addWarning`/`addNote`, and re-render the same drilldown view in place.
+  **Update (2026-08-22):** `src/metadata.js` (a separate `data/metadata.json`
+  file, disconnected from every other player-state table) has since been
+  retired entirely — warnings/notes now live in `kraken.db`'s
+  `player_warnings`/`player_notes` tables (`recruit/db.js`'s `initDb`),
+  keyed by `player_tag` to match how `/ops` already identifies players (not
+  `discord_id` — a clan member who hasn't linked Discord yet still needs to
+  be warnable, and `profiles.player_tag` has no `UNIQUE` constraint anyway,
+  so a real foreign key isn't valid SQLite there). Read/written via `ops.js`'s
+  own direct DB connections, matching every other DB access already in that
+  file, not through recruit's shared handle. `loadWarningsNotesFromDb`
+  reproduces the old file's exact `{tag: [{...}]}` shape, so `toTagCountMap`
+  and everything downstream needed zero changes — only the storage moved.
   Two things worth knowing if this needs touching again:
   - `opsHandler`'s button/select flow unconditionally calls
     `interaction.deferUpdate()` before doing anything else — `showModal()`

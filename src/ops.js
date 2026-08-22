@@ -6,7 +6,6 @@ import { buildMemberIntel, filterToCurrentClan } from './war-intel.js';
 import { upsertTodaySnapshot } from './history.js';
 import { computeHistoryWeightedRisk, HIGH_RISK_THRESHOLD } from './risk-score.js';
 import { calculateClanHealth } from './analytics.js';
-import { loadMetadata, addWarning, addNote } from './metadata.js';
 import { cleanTag, daysSinceLastSeen, formatDaysAgo } from './util.js';
 import { formatErrorForLog } from './security.js';
 import { confirmMemberGone } from './permissions.js';
@@ -148,6 +147,60 @@ function getActiveBreakTagsFromDb() {
     return new Set(rows.map(r => cleanTag(r.player_tag)));
   } catch {
     return new Set();
+  }
+}
+
+// Warnings/notes used to live in a separate data/metadata.json file, disconnected from
+// every other player-state table. Moved into kraken.db's player_warnings/player_notes
+// tables (recruit/db.js's initDb — guaranteed to have run by the time /ops is ever used,
+// since index.js calls getRecruitDb() unconditionally at startup regardless of whether
+// Recruit HQ itself is enabled). Read/written via ops.js's own direct connections, same
+// pattern as every other DB access in this file — never through recruit/db.js's shared
+// handle, which this command doesn't otherwise touch.
+//
+// Shape matches the old metadata.json exactly ({ tag: [{date, reason/note, issuedBy}, ...] })
+// so toTagCountMap and every existing caller below needed zero changes — only the source did.
+function loadWarningsNotesFromDb() {
+  const empty = { warnings: {}, notes: {} };
+  try {
+    const db = new Database(OPS_DB_PATH, { readonly: true, fileMustExist: true });
+    const warningRows = db.prepare('SELECT player_tag, reason, issued_by, created_at FROM player_warnings ORDER BY created_at').all();
+    const noteRows = db.prepare('SELECT player_tag, note, issued_by, created_at FROM player_notes ORDER BY created_at').all();
+    db.close();
+
+    const warnings = {};
+    for (const r of warningRows) {
+      const list = warnings[r.player_tag] ?? (warnings[r.player_tag] = []);
+      list.push({ date: new Date(r.created_at).toISOString(), reason: r.reason, issuedBy: r.issued_by });
+    }
+    const notes = {};
+    for (const r of noteRows) {
+      const list = notes[r.player_tag] ?? (notes[r.player_tag] = []);
+      list.push({ date: new Date(r.created_at).toISOString(), note: r.note, issuedBy: r.issued_by });
+    }
+    return { warnings, notes };
+  } catch {
+    return empty;
+  }
+}
+
+function addPlayerWarningToDb(playerTag, reason, issuedBy) {
+  const db = new Database(OPS_DB_PATH, { fileMustExist: true });
+  try {
+    db.prepare('INSERT INTO player_warnings (player_tag, reason, issued_by, created_at) VALUES (?, ?, ?, ?)')
+      .run(String(playerTag), String(reason), issuedBy ? String(issuedBy) : null, Date.now());
+  } finally {
+    db.close();
+  }
+}
+
+function addPlayerNoteToDb(playerTag, note, issuedBy) {
+  const db = new Database(OPS_DB_PATH, { fileMustExist: true });
+  try {
+    db.prepare('INSERT INTO player_notes (player_tag, note, issued_by, created_at) VALUES (?, ?, ?, ?)')
+      .run(String(playerTag), String(note), issuedBy ? String(issuedBy) : null, Date.now());
+  } finally {
+    db.close();
   }
 }
 
@@ -578,7 +631,7 @@ export async function loadOpsData(windowDays) {
   });
 
   const health = calculateClanHealth(members, history, scored);
-  const metadata = loadMetadata();
+  const metadata = loadWarningsNotesFromDb();
 
   return {
     clan,
@@ -1105,8 +1158,8 @@ async function handleWarnNoteSubmit(interaction) {
 
     const isWarn = interaction.customId.startsWith('ops:warnSubmit:');
     const issuedBy = interaction.user?.tag ?? String(interaction.user?.id ?? 'unknown');
-    if (isWarn) addWarning(parsed.playerTag, text, issuedBy);
-    else addNote(parsed.playerTag, text, issuedBy);
+    if (isWarn) addPlayerWarningToDb(parsed.playerTag, text, issuedBy);
+    else addPlayerNoteToDb(parsed.playerTag, text, issuedBy);
     written = true;
 
     const state = {
