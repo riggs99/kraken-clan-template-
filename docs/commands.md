@@ -78,6 +78,15 @@ Displays one of:
 
 ---
 
+### `/help`
+
+**Who can use:** Any member of Recruit HQ
+**Channel:** Anywhere in Recruit HQ
+
+Shows the commands you personally can use — role-aware, not a static list. A regular member sees `/status` and `/recruit-appeal`; leaders additionally see the leader tools (`/standings`, `/recruit-eval-now`, `/recruit-season-report`, `/recruit-season-reset`, `/recruit-history`, `/recruit-add-member`, `/ops`, `/war`, `/recruit-remove-member`, `/recruit-ban-member`); the server owner additionally sees owner-only tools (`/recruit-settings`, `/recruit-setup`, `/recruit-decisions-reset`, `/recruit-break-reset`). Every section is only ever included in the response for someone who actually holds that role — a member's reply never contains leader/owner content, it isn't just hidden by formatting. Response is ephemeral (only you see it).
+
+---
+
 ### `/standings`
 
 **Who can use:** Leaders / Admin only
@@ -257,6 +266,29 @@ Season-by-season war performance table for one tracked player.
 **Option:** `tag` — player tag with or without `#`
 
 Shows a table (current season + up to 3 archived seasons) of war days, decks used vs. expected, missed war days, and participation %, plus the player's current linked status. Archive data is cached for 10 minutes.
+
+---
+
+### `/recruit-season-report`
+
+**Who can use:** Leaders / Admin only
+**Channel:** Anywhere in Recruit HQ
+
+Posts the **current** season's top-5 (fame, wars played, donations) to the leader channel. Read-only — no data changes, no season boundary touched. Safe to run as many times as you like; every run just posts a fresh snapshot of current standings.
+
+---
+
+### `/recruit-season-reset`
+
+**Who can use:** Leaders / Admin only
+**Channel:** Anywhere in Recruit HQ
+
+⚠️ Posts the **final** season report and rolls to a new season — confirm-gated (a Confirm/Cancel button, not immediate).
+
+- Backs up `history.json` before touching anything; if the backup can't be found, aborts before any post
+- Guarded against double-rolling: blocked until next month's rollover window opens (the first Monday of the month or later) unless the bot operator runs `FORCE=1 node scripts/season-reset.js` from the terminal — there is no Discord-side override
+- Rolls the season boundary first, then posts the report — if posting fails after the roll already happened, you're told plainly that the boundary **did** roll (and won't roll again this month), so you post the outgoing standings manually instead of assuming nothing happened
+- Does not touch anyone's roles, tier status, or history — full history keeps accumulating, only the season-scoped stats reset
 
 ---
 
