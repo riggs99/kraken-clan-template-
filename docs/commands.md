@@ -21,6 +21,8 @@ The single entry point for all clan management. Opens an interactive panel with 
 
 Use the dropdown and buttons inside the panel to navigate pages and switch tabs.
 
+On the **Actions** tab, once a player is selected in the drilldown, two extra buttons appear: **⚠️ Add Warning** and **📝 Add Note**. Each opens a modal for the text and logs it against that player (visible on their drilldown card and in the action-queue reasons going forward) — a lightweight paper trail for discipline history, independent of the automated tier system.
+
 ---
 
 ## `/war` — Standalone War Hub
