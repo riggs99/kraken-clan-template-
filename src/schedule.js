@@ -584,11 +584,16 @@ function shouldSendDailyReport(lastDaily) {
   const targetHour = 20;
   
   if (!lastDate || lastDate.toDateString() !== now.toDateString()) {
-    if (now.getUTCHours() === targetHour) {
+    // >=, not === : this is checked on an hourly setInterval tick, not a real cron, so an
+    // exact-hour match can be missed entirely by a restart/deploy/downtime spanning that
+    // hour, silently skipping the report for the whole day. >= catches up on the next tick
+    // instead. Safe against duplicates — the toDateString() check above already blocks a
+    // second send once lastDaily is stamped for today.
+    if (now.getUTCHours() >= targetHour) {
       return true;
     }
   }
-  
+
   return false;
 }
 

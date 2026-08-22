@@ -68,6 +68,20 @@ function displayMember(changeOrUser) {
   return clean ? `#${clean}` : '#UNKNOWN';
 }
 
+// summarizeWindow (policy.js) already computes boatTotal/repairTotal on the same object
+// hasForbidden is derived from — this surfaces the real breakdown instead of the flat
+// "forbidden actions detected" flag, which told a leader/member nothing about what
+// actually happened.
+function describeForbiddenActions(statSum) {
+  const boat = num(statSum?.boatTotal);
+  const repair = num(statSum?.repairTotal);
+  if (boat <= 0 && repair <= 0) return '';
+  const parts = [];
+  if (boat > 0) parts.push(`${boat} boat attack${boat !== 1 ? 's' : ''}`);
+  if (repair > 0) parts.push(`${repair} repair point${repair !== 1 ? 's' : ''}`);
+  return parts.join(', ');
+}
+
 function chunk(arr, size) {
   const out = [];
   const a = Array.isArray(arr) ? arr : [];
@@ -372,8 +386,9 @@ function buildTierChangeDm({ before, after, reasons = [], sum7, sum14, name }) {
   const who = name ? `Hi **${safeTruncate(String(name), 40)}**,` : 'Hi,';
   const lines = [who, ''];
   const statSum = (after === 'warcore' || before === 'warcore') ? (sum14 ?? sum7) : sum7;
+  const forbiddenDesc = describeForbiddenActions(statSum);
   const statsLine = statSum && num(statSum.expectedDecks) > 0
-    ? `Your stats: **${num(statSum.usedDecks)}/${num(statSum.expectedDecks)} decks** · **${num(statSum.missedWarDays)}** missed war day${num(statSum.missedWarDays) !== 1 ? 's' : ''}${statSum.hasForbidden ? ' · ⛔ forbidden actions detected' : ''}`
+    ? `Your stats: **${num(statSum.usedDecks)}/${num(statSum.expectedDecks)} decks** · **${num(statSum.missedWarDays)}** missed war day${num(statSum.missedWarDays) !== 1 ? 's' : ''}${forbiddenDesc ? ` · ⛔ ${forbiddenDesc}` : ''}`
     : null;
 
   if (before === 'probation' && after === 'warcore') {
@@ -475,7 +490,8 @@ function buildRichMemberEmbed(change) {
     .setDescription(description);
 
   if (statSum && num(statSum.expectedDecks) > 0) {
-    const forbidden = statSum.hasForbidden ? ' · ⛔ forbidden actions' : '';
+    const forbiddenDetail = describeForbiddenActions(statSum);
+    const forbidden = forbiddenDetail ? ` · ⛔ ${forbiddenDetail}` : '';
     embed.addFields({
       name: 'Performance',
       value: `${num(statSum.usedDecks)}/${num(statSum.expectedDecks)} decks · ${num(statSum.missedWarDays)} missed war day${num(statSum.missedWarDays) !== 1 ? 's' : ''}${forbidden}`,
@@ -1928,8 +1944,9 @@ export async function runRecruitDailyEvaluation(client, recruitConfig, db, optio
       lines: [
         ...roleChanges.slice(0, 12).map(r => {
           const sum = r.summary14 ?? r.summary7;
+          const sumForbiddenDesc = describeForbiddenActions(sum);
           const stats = sum && num(sum.expectedDecks) > 0
-            ? ` (${num(sum.usedDecks)}/${num(sum.expectedDecks)} decks · ${num(sum.missedWarDays)}/${num(sum.warDays)} war days missed${sum.hasForbidden ? ' · forbidden' : ''})`
+            ? ` (${num(sum.usedDecks)}/${num(sum.expectedDecks)} decks · ${num(sum.missedWarDays)}/${num(sum.warDays)} war days missed${sumForbiddenDesc ? ` · forbidden: ${sumForbiddenDesc}` : ''})`
             : '';
           return `**${displayMember(r)}**: ${r.before} → ${r.after}${stats}`;
         }),
