@@ -105,9 +105,14 @@ ALLOWED_ROLE_IDS=role_id_1,role_id_2
 ## Access Control
 
 ### Role-Based Permissions
-- Main clan server (`/ops`): requires the "kraken" role (configurable via `ALLOWED_ROLE_IDS`) or, in Recruit HQ, the "leaders" role
-- Recruit HQ leader-only commands/buttons (`/recruit-setup`, `/recruit-eval-now`, `/recruit-settings`, `/recruit-history`, appeal resolution, break acknowledgement) require the "leaders" role or Administrator
+- Main clan server (`/ops`, `/war`): requires the "kraken" role (configurable via `ALLOWED_ROLE_IDS`) or, in Recruit HQ, the "leaders" role
+- Recruit HQ leader-only commands/buttons: `/standings`, `/recruit-setup`, `/recruit-eval-now`, `/recruit-settings`, `/recruit-history`, `/recruit-add-member`, `/recruit-remove-member`, `/recruit-ban-member`, `/recruit-season-report`, `/recruit-season-reset`, `/recruit-decisions-reset`, `/recruit-break-reset`, appeal resolution, break acknowledgement, and the Add Warning/Add Note buttons on `/ops` — all require the "leaders" role or Administrator
 - Leader channel restrictions where applicable
+
+### Emergency Moderation — Opt-In Only
+- `/recruit-remove-member` (kick) and `/recruit-ban-member` (ban) are leader-only, confirm-gated, and require a logged reason
+- Both require the bot to actually hold **Kick Members**/**Ban Members** permission in the server — neither is part of the standard invite link or `/recruit-setup`'s permission checklist. Every clan runs without this capability by default; a leader must deliberately grant it in Server Settings → Roles if they want it
+- Every kick/ban is logged permanently with the leader who ran it and their stated reason
 
 ### Guild Scoping
 - Recruit commands and interactions hard-stop outside the configured `recruitGuildId` — they never appear in or respond in the main clan server
@@ -126,7 +131,7 @@ ALLOWED_ROLE_IDS=role_id_1,role_id_2
 
 ### Recruit Data (SQLite)
 - Recruit profiles, tier status, break records, appeals, waitlist entries, and evaluator settings are stored locally in `data/kraken.db` (SQLite, WAL mode)
-- Contains Discord IDs and Clash Royale player tags — no other personal data
+- Contains Discord IDs and Clash Royale player tags, plus free-text warning/note entries a leader writes about a player from `/ops`'s dashboard (`player_warnings`/`player_notes` tables) — leaders should treat that field the same as any other internal moderation note, since it's plain text they control the content of, not auto-generated
 - No external database required; file lives alongside the bot, not exposed over any network interface
 
 ### In-Memory Caching
@@ -228,5 +233,5 @@ For security concerns or to report vulnerabilities:
 
 ## Updates
 
-Last updated: July 2, 2026
-Security measures reviewed and validated, including the Recruit HQ subsystem (SQLite storage, second-guild scoping).
+Last updated: August 22, 2026
+Security measures reviewed and validated, including the Recruit HQ subsystem (SQLite storage, second-guild scoping), the opt-in emergency-moderation permission model, and the warnings/notes system.

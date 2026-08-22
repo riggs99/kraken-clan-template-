@@ -78,6 +78,7 @@ See [docs/commands.md](docs/commands.md) for the current, full reference (`COMMA
 
 ## Docs
 - [SETUP.md](SETUP.md) — complete first-time setup guide (start here)
+- [FEATURES.md](FEATURES.md) — a readable tour of what KRAKEN actually does, by subsystem
 - [DEPLOYMENT.md](DEPLOYMENT.md) — running an instance in production (updates, backups, ops)
 - [docs/commands.md](docs/commands.md) — full, current command/feature reference (OPS + Recruit)
 - [docs/bot-startup.md](docs/bot-startup.md) — process management (start/stop/logs, season reset)

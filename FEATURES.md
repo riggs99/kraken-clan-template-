@@ -1,293 +1,119 @@
-# 🐙 Kraken Features
+# 🐙 KRAKEN Features
 
-## Automated Reports
+A tour of what KRAKEN actually does today, organized by subsystem. For exact
+per-command usage (options, permissions, channel restrictions), see
+[docs/commands.md](docs/commands.md) — that file is the authoritative
+reference; this one is the readable overview.
 
-### 📅 Daily Reports (20:00 UTC)
-Automatic daily clan activity summary sent to your configured leader channel:
-- Today's active member count
-- Total fame, repairs, boat attacks, decks used
-- 7-day participation average
-- Top 5 performers of the day
-- Members needing attention (high risk score)
+## Core commands (main clan server)
 
-**Configuration:** Set `LEADER_CHANNEL_ID` in `.env`
+**`/ops`** — the main dashboard, four tabs:
+- **Overview** — clan health score (0-100, graded A-F), member list, activity summary
+- **War** — river race standings, deck usage, per-member war stats
+- **Donations** — donation counts/ratios across 1/7/14-day windows
+- **Actions** — promotion/demotion recommendations, discipline flags, reward candidates, plus a player drilldown with **Add Warning** / **Add Note** buttons
 
-### 📊 Weekly Reports (Sunday 20:00 UTC)
-Comprehensive weekly analysis with actionable recommendations:
-- Promotion candidates (→ Elder, → Co-Leader)
-- Demotion candidates (Co → Elder, Elder → Member)
-- Kick candidates with risk scores
-- Summary counts and next steps
+**`/war`** — standalone pull-out of the War tab, for a quick mid-war check without opening the full dashboard. Same underlying data as `/ops`'s War tab, plus a quick read on how tier decisions are shaping up (promote/watch/underwatch/boot counts) without the full panel.
 
-**Analysis Window:** 14 days of historical data
+## Tier/discipline automation
 
-## Slash Commands
+- Weighted risk score per player: war participation 60%, deck usage 25%, donations 10%, inactivity penalty, plus a recent-zero-days penalty
+- Grace period (default 7 days from first-seen): can be promoted, never demoted or kicked while in grace
+- Repeat-offender detection: 2+ bottom-list appearances in a 14-day window, only counted outside grace
+- Promotion thresholds: Member→Elder needs ≥90% participation, ≤10% deck-miss, ≤15% risk; Elder→Co-Leader needs ≥95%/≤5%/≤10%
+- Demotion thresholds: Co→Elder at ≥55% risk or <60% participation or repeat offender; Elder→Member at ≥65% risk or <50% participation or repeat offender
+- Kick candidates: ≥85% risk, or 14+ days inactive, or repeat offender with ≥75% risk
+- Boat attacks and repair points tracked as explicit discipline signals, separate from the risk number
+- Every recommendation ships with 3-6 specific reasons, never a bare score
+- Recruit HQ's own tier ladder (probation → warcore → underwatch → boot review) runs on the same rolling 7-day/14-day windows, evaluated automatically — never manual
 
-The command list previously here (`/ping`, `/clan`, `/player`, `/war`, `/warlog`, `/activity`, `/recent`, `/review`, `/promotions`, `/leaderboard`, `/donations`) has been replaced. All of that functionality (clan overview, player lookup, war stats, donations, promotion/demotion/kick recommendations with receipts) now lives inside the single **`/ops`** command's tabbed panel (Overview / War / Donations / Actions), and the scoring logic described below (risk weighting, grace period, promotion/demotion/kick thresholds) still applies unchanged.
+## Recruit HQ — application & roles
 
-There is also a full **Recruit HQ** subsystem (application intake, automated tier tracking, breaks, appeals, waitlist) running in a second Discord server — see [docs/commands.md](docs/commands.md) for the complete current reference.
+- `/apply` (or "Agree & Join" button): verifies tag against the live clan roster, grants `kraken-member` + `probation` instantly, DMs a two-part welcome guide, 24h cooldown between attempts
+- On Discord join (before applying): auto-tagged `new-arrival`; if the clan's at its 50-cap, also queued on the waitlist
+- Waitlist: weekly check-in DM with a 48h window (no response = removed + role stripped), slot offers go to the longest-waiting person automatically when a spot opens, applying clears it immediately
+- `/status` — self-check of current tier, break status, cooldowns (ephemeral, self only)
+- `/help` — role-aware command list: a member sees member commands, a leader additionally sees leader tools, the owner additionally sees owner-only tools. A member's response never contains leader/owner content — it's excluded from what's built, not just hidden by formatting
+- `/standings` — leader-only, full paginated decision board (stable/watch/underwatch/boot/hold), coverage/integrity checks (unlinked roster members, orphaned profiles, invalid tags), OPS-risk alignment so it never disagrees with the nightly evaluator
 
-## Player Name Resolution
+## Break system
 
-### Smart Name Matching
-- **Case-insensitive** - "john" matches "JOHN", "John", etc.
-- **Clash formatting removal** - Strips `<c6>`, `</c>` color tags
-- **Whitespace normalization** - Handles extra spaces, dashes, underscores
-- **Multi-source search** - Checks current roster + 7-day history
+- Self-service 7/14/30-day breaks via a panel button, pauses tracking with zero penalty
+- "I'm Back" ends early and resumes exactly where it left off
+- Day-before reminder DM, day-of warning DM if not returned, escalation to underwatch only after at least one full completed war day of inactivity post-expiry (not immediately)
+- Underwatch/probation streak clocks pause (not reset) while on break
 
-### Disambiguation
-When multiple players match:
-- Shows "did you mean" list
-- Includes role, last seen, and source
-- Clear formatting with emojis
+## Appeals
 
-**Examples:**
-```
-/player name:shadow
-/activity name:john doe  
-/review name:ProGamer
-```
+- `/recruit-appeal` or the panel button, 800-char reason, 7-day cooldown
+- Posts to a leader-only channel with Overturn/Keep Decision buttons
+- Atomic claim on resolution (a second leader clicking gets "already resolved," not a double-processed appeal)
+- Resolved appeals are deleted from the live channel, kept permanently in the audit-log channel
 
-## Risk Scoring System
+## Emergency / moderation commands
 
-### Weighted Risk Analysis
-- **War Participation (60%)** - Most important factor
-- **Deck Usage (25%)** - Missing decks is bad
-- **Donations (10%)** - Contribution to clan
-- **Inactivity (5%)** - Days since last seen
-- **Recent Zeros Penalty** - 2 consecutive zero-fame days
+- `/recruit-remove-member` — leader-only kick, requires Kick Members permission (opt-in, off by default), clears all tracking state before the kick fires, offers the freed slot to the next waitlist entry
+- `/recruit-ban-member` — same pattern, Ban Members permission (also opt-in/off by default), explicit `deleteMessageSeconds: 0`
+- `/recruit-add-member` — leader override to manually add someone outside the normal apply flow, hard-verifies the tag against the roster first
+- Every one of these posts a permanent record naming the leader and the reason
 
-### Grace Period
-- **7 days** from first seen (configurable)
-- In grace: can be promoted, never demoted/kicked
-- Gives new members time to prove themselves
+## Warnings & notes
 
-### Repeat Offender Detection
-- Tracks bottom list appearances over 14 days
-- Threshold of 2 appearances
-- Only counts when NOT in grace period
+- **Add Warning** / **Add Note** buttons on `/ops`'s actions-tab drilldown, modal-based text entry
+- Stored in `kraken.db` (`player_warnings`/`player_notes` tables, keyed by player tag — the same store as every other player-state table, not a separate file), with a timestamp and who issued it
+- Surfaced as a count on the drilldown card and folded into the action-queue reasons
 
-## Promotion Classification
+## Hall of Fame
 
-### Promote → Elder
-- Current role: Member
-- War participation ≥ 90%
-- Deck miss rate ≤ 10%
-- Risk score ≤ 15%
-- NOT in grace or repeat offender
+- Three shared records: Top Donor, War Champion, Iron Attendance — longest streak at #1, minimum 4 consecutive war weeks to qualify
+- Announced only when a record actually changes hands, never repeated
+- If a record holder leaves the clan, it reverts to the most recent prior holder still in-clan, or clears — logged, not announced publicly
 
-### Promote → Co-Leader
-- Current role: Elder
-- War participation ≥ 95%
-- Deck miss rate ≤ 5%
-- Risk score ≤ 10%
-- NOT in grace or repeat offender
+## Grace / continuity protections
 
-### Demote Co → Elder
-- Current role: Co-Leader
-- Risk ≥ 55% OR participation < 60% OR repeat offender
+- New-joiner tracking grace, separate from the break system, tied to `GRACE_DAYS`
+- Server-leave grace: leaving Discord while still genuinely in the clan grants an automatic 7-day break instead of removal; leaving while actually gone from the clan marks removed immediately
+- On return: tier role restored from stored profile status automatically, no reapplying
 
-### Demote Elder → Member
-- Current role: Elder
-- Risk ≥ 65% OR participation < 50% OR repeat offender
+## Automated background jobs (no command needed)
 
-### Kick Candidates
-- Current role: Member
-- NOT in grace
-- Risk ≥ 85% OR inactive ≥ 14 days OR (repeat offender AND risk ≥ 75%)
+- Daily evaluator: polls the live API every 10 minutes, fires the moment the real war-day/period actually rolls over (not a guessed clock), plus a 24h safety-net catch-up
+- Role review fires exactly once per completed war week, on the first training day after it closes
+- At-risk DM warnings for members under 50% deck completion, rate-limited to once per 4 days
+- Break expiry reminders (day-before + day-of), rate-limited per break period
+- Waitlist weekly check-ins and 48h expiry sweep
+- Daily report of clan-roster members with no KRAKEN profile at all (dedup'd, never repeats the same tag)
+- Daily clan activity report + Sunday weekly promotion/demotion summary, posted automatically
+- Panels (welcome, break, appeals, waitlist) self-heal on startup and `/recruit-setup` if missing or deleted
 
-## Comprehensive Stats Display
+## Season & history
 
-Every player shown includes:
-```
-war:94% • deckMiss:6% • fame:+1200 • decksUsed:38 • repairs:+120 • boatAtk:3 • donAvg:18 • inactive:1d • risk:9%
-```
+- `/recruit-history` — season-by-season table per player (current + up to 3 archived seasons), 10-min cache
+- `/recruit-season-report` — posts current-season top-5 (fame/wars-played/donations) on demand, read-only
+- `/recruit-season-reset` — posts the final report and rolls to a new season, guarded against double-rolling the same month, backs up history before mutating
+- Full history keeps accumulating across season boundaries — nothing gets wiped, just re-scoped
 
-### Stats Include
-- War participation rate (%)
-- Deck miss rate (%)
-- Total fame in window
-- Total decks used in window
-- Total repair points in window
-- **Boat attacks** (negative signal - discipline issue)
-- Average donations per day
-- Days inactive
-- Risk percentage
+## Setup & admin
 
-## Receipts (Reasons)
+- `/recruit-setup` — one command builds every channel/role/permission; safe to re-run; adopts existing channels/roles only by stored ID or explicit config, never by guessing names (so it can't collide with anything already on a populated server)
+- Leaders can pre-point KRAKEN at already-existing roles/channels via config before first setup, instead of getting duplicates
+- `/recruit-settings` — adjust expected-decks-per-war-day live, no restart
+- `/recruit-eval-now` — true dry-run preview of the evaluator, zero side effects
+- `/recruit-decisions-reset` / `/recruit-break-reset` — purge + repost the public decisions/break channels, confirm-gated, logged
 
-### Promotion Reasons (3-6)
-- Consistent war participation
-- Strong deck discipline
-- Fame contribution over window
-- Recently active
-- Good support via repairs
-- Clean history, no flags
+## Reliability & security
 
-### Demotion/Kick Reasons (3-6)
-- War no-shows
-- Missed decks
-- Low or zero war contribution
-- Inactivity trend
-- Repeat offender
-- High risk score
-- **Boat attacks detected** (discipline issue)
-
-## Security Features
-
-### Input Validation
-- Player names validated (length, characters)
-- Integer options validated (range checks)
-- Clan tags validated (format, length)
-- Channel IDs validated (Discord format)
-
-### Rate Limiting
-- Per-user, per-command tracking
-- Automatic cleanup of old data
-- Prevents abuse and spam
-
-### Error Sanitization
-- File paths removed from errors
-- Sensitive info never exposed
-- Length-limited messages
-- Stack traces only in console
-
-### Environment Validation
-- All required variables checked at startup
-- Format validation (URLs, IDs, tags)
-- Bot exits if misconfigured
-- Clear error messages for admins
-
-## Caching & Circuit Breaker
-
-### Intelligent Caching
-- Clan data: 60 seconds
-- Player data: 120 seconds
-- Current race: 120 seconds
-- Race log: 600 seconds
-
-### Circuit Breaker
-- Protects against API rate limits
-- Automatic cooldown after failures
-- Graceful degradation with cache
-- User-friendly error messages
-
-## Historical Tracking
-
-### Data Persistence
-- Daily snapshots in `data/history.json`
-- First seen tracking for grace period
-- Bottom list tracking for repeat offenders
-- 7-14 day analysis windows
-
-### Trend Analysis
-- Compare today vs. baseline
-- Identify improving/declining players
-- Track consistency over time
-- Support data-driven decisions
-
-## Access Control
-
-### Role-Based Permissions
-- Requires "kraken" role (configurable via `ALLOWED_ROLE_IDS`)
-- Guild-specific operation
-- Leader channel restrictions
-- Clear error messages for unauthorized users
-
-### Audit Logging
-- All commands logged to console
-- User, command, and timestamp
-- Error tracking and debugging
-
-## Code Quality
-
-### ESLint Configuration
-- Security-focused rules
-- No eval() or Function() constructors
-- Strict equality checks
-- Modern JavaScript (ES2022)
-
-### Development Scripts
-```powershell
-npm start          # Run the bot
-npm run deploy     # Deploy slash commands
-npm run lint       # Check code quality
-npm run lint:fix   # Auto-fix issues
-```
-
-## Performance
-
-### Minimal Discord Permissions
-- No message content access required
-- Interaction-based only
-- Guild-specific intents
-- Ephemeral responses for sensitive data
-
-### Efficient API Usage
-- TTL-based caching
-- Circuit breaker prevents over-calling
-- Parallel requests where possible
-- Respects rate limits
-
-## Customization
-
-### Environment Variables
-```env
-GRACE_DAYS=7                    # Grace period for new members
-REPEAT_WINDOW_DAYS=14          # Repeat offender tracking window
-REPEAT_THRESHOLD=2             # Number of appearances to flag
-ALLOWED_ROLE_IDS=role1,role2   # Comma-separated role IDs
-LEADER_CHANNEL_ID=channel_id   # Channel for reports
-```
-
-### Flexible Analysis Windows
-- Default: 7 days for daily analysis
-- Default: 14 days for weekly reports
-- Custom: 1-90 days via `/promotions days:<days>`
-
-## Best Practices
-
-### Decision Support
-Kraken provides **recommendations only**:
-- NEVER kicks automatically
-- NEVER promotes automatically
-- NEVER demotes automatically
-- You review and take manual action
-
-### Data-Driven Decisions
-- Comprehensive stats for every player
-- 3-6 specific reasons for each recommendation
-- Historical context and trends
-- Multiple data signals combined
-
-### Transparency
-- All logic is explainable
-- Reasons shown to users
-- Risk scores visible
-- History tracking for accountability
-
-## Future-Proof Design
-
-### Modular Architecture
-- Separate modules for each concern
-- Easy to extend with new commands
-- Clean separation of business logic
-- Reusable utilities
-
-### Error Resilience
-- Try-catch on all async operations
-- Graceful degradation
-- User-friendly error messages
-- Never crashes the bot
-
-### Maintainability
-- Well-documented code
-- Security best practices
-- Input validation everywhere
-- Consistent code style
+- Circuit breaker on the CR API — only 429/5xx trip it, not bad-tag 404s; auto-cools down
+- TTL caching (clan/player/race data) to avoid hammering the API
+- Atomic file writes everywhere (temp file + rename) so a hard kill mid-write can't corrupt `history.json`/`discipline.json`
+- Cross-process file lock for season rollovers and routine snapshots, with stale-lock self-recovery
+- Daily gzip'd backup of the DB (WAL-checkpointed, not a raw copy) + history + discipline files, uploaded to a private channel, 30-day retention
+- Every Discord role mutation is verified against the actual resulting role cache, never assumed to have worked
+- discord.js client-level error handling so a transient websocket blip can't crash the whole bot
+- Fully isolated per-clan deployment — own bot token, own database, nothing shared between clans
 
 ---
 
-For setup instructions, see [README.md](README.md)  
-For security details, see [SECURITY.md](SECURITY.md)  
+For setup instructions, see [SETUP.md](SETUP.md)
+For security details, see [SECURITY.md](SECURITY.md)
 For the current command reference, see [docs/commands.md](docs/commands.md)

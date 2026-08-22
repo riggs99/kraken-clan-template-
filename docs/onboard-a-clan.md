@@ -54,9 +54,13 @@ cp .env.example .env
 nano .env
 ```
 `DISCORD_TOKEN`, `DISCORD_APP_ID` → from step ②. `DISCORD_GUILD_ID` → their
-server ID. `CR_API_TOKEN` → reuse your own key (it reads any clan's public
-data — no need for a new one per clan). `CLAN_TAG` → theirs. Save: Ctrl+O,
-Enter, Ctrl+X.
+server ID. `CR_API_TOKEN` → generate a **new, separate key** for this clan at
+developer.clashroyale.com (whitelisted to the same proxy IP, `45.79.218.79`,
+as every other clan's key) — see `multi-clan-hosting.md` for why: Supercell's
+rate limit is per-key, so sharing one key across clans means they'd all share
+one rate-limit budget and could all start failing at once as you add more.
+Keys are free, so there's no reason not to give each clan its own. `CLAN_TAG`
+→ theirs. Save: Ctrl+O, Enter, Ctrl+X.
 
 **⑦ Fill in the config files**
 ```bash
