@@ -163,7 +163,10 @@ builds the entire Recruit HQ automatically:
   "Agree & Join" onboarding panel
 - `#relink` — same visibility as `#welcome` (created if missing, or adopted
   by ID via `channels.relinkChannelId`) — for onboarding a clan's existing
-  roster onto KRAKEN without resetting anyone's standing; see Step 8 below
+  roster onto KRAKEN without resetting anyone's standing; see Step 8 below.
+  Set `enableRelinkChannel: false` in `config/recruit.config.json` to skip
+  creating it entirely for a genuinely brand-new server with no prior
+  roster — defaults to on.
 - `#kraken-decisions` — members-only (`kraken-member` + `leaders`),
   member-facing decision summaries
 - `#on-a-break` — members-only (`kraken-member` + `leaders`), break-request

@@ -341,13 +341,21 @@ async function handleSetupInner(interaction, ctx) {
   // always resets to probation. #relink is the parallel entry point that preserves existing
   // standing instead (see relinkCore, apply.js). Same visibility as #welcome: readable by
   // everyone, including someone with no KRAKEN role at all yet.
-  const relinkChannel = await findOrCreateManagedChannel(guild, {
-    configuredId: recruitConfig?.channels?.relinkChannelId,
-    storedId: existing?.channels?.relinkChannelId,
-    createName: 'relink',
-    overwrites: welcomeOverwrites,
-    enforceReason: 'KRAKEN Recruit setup: enforce relink permissions',
-  });
+  //
+  // enableRelinkChannel defaults to true (undefined/missing counts as on, so existing clan
+  // configs that predate this flag keep getting it) — a leader onboarding a genuinely
+  // brand-new server with no prior roster can set this false to skip creating a channel
+  // nobody there will ever need to click.
+  const relinkEnabled = recruitConfig?.enableRelinkChannel !== false;
+  const relinkChannel = relinkEnabled
+    ? await findOrCreateManagedChannel(guild, {
+        configuredId: recruitConfig?.channels?.relinkChannelId,
+        storedId: existing?.channels?.relinkChannelId,
+        createName: 'relink',
+        overwrites: welcomeOverwrites,
+        enforceReason: 'KRAKEN Recruit setup: enforce relink permissions',
+      })
+    : null;
   const configuredDecisionsId = String(recruitConfig?.channels?.decisionsChannelId ?? '');
   const configuredDecisionsChannel = await resolveTextChannelById(guild, configuredDecisionsId);
   const decisionsChannel = configuredDecisionsChannel ?? await findOrCreateTextChannelById(guild, existing?.channels?.decisionsChannelId, 'kraken-decisions-leaders', decisionsOverwrites, leadersCategory.id);
@@ -440,7 +448,7 @@ async function handleSetupInner(interaction, ctx) {
   setRecruitSetting(db, 'channels.decisionsChannelId', decisionsChannel.id);
   setRecruitSetting(db, 'channels.publicDecisionsChannelId', publicDecisionsChannel.id);
   setRecruitSetting(db, 'channels.welcomeChannelId', welcomeChannel.id);
-  setRecruitSetting(db, 'channels.relinkChannelId', relinkChannel.id);
+  if (relinkChannel) setRecruitSetting(db, 'channels.relinkChannelId', relinkChannel.id);
   // We run onboarding and applications from #welcome (panel + modal).
   setRecruitSetting(db, 'channels.applyChannelId', welcomeChannel.id);
   // General logs go to #logs; high-signal mod decisions can use channels.decisionsChannelId.
@@ -591,7 +599,7 @@ async function handleSetupInner(interaction, ctx) {
     '',
     `Channels:`,
     `- welcome: <#${welcomeChannel.id}>`,
-    `- relink: <#${relinkChannel.id}>`,
+    ...(relinkChannel ? [`- relink: <#${relinkChannel.id}>`] : ['- relink: disabled (enableRelinkChannel: false in config)']),
     `- kraken-decisions-leaders: <#${decisionsChannel.id}>`,
     `- kraken-decisions: <#${publicDecisionsChannel.id}>`,
     `- on-a-break: <#${onBreakChannel.id}>`,

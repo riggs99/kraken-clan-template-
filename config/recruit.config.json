@@ -29,5 +29,6 @@
   },
   "warServer": { "inviteUrl": "PUT_YOUR_DISCORD_INVITE_URL_HERE" },
   "welcomeImagePath": "",
-  "waitlistRequiresApproval": false
+  "waitlistRequiresApproval": false,
+  "enableRelinkChannel": true
 }
