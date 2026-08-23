@@ -242,13 +242,19 @@ function isValidDiscordId(id) {
 }
 
 export function syncRecruitRuntimeFromConfig(db, { recruitConfig, opsConfig } = {}) {
+  // Matches setup.js's own enableRelinkChannel check (default on) — without this, a leftover
+  // channels.relinkChannelId value sitting in config would resurrect a stored ID that setup.js
+  // just deliberately cleared, the next time the bot starts up. syncRecruitRuntimeFromConfig
+  // runs unconditionally on every startup, so this has to agree with setup.js or the two paths
+  // fight each other on whether relink is actually off.
+  const relinkChannelEnabled = recruitConfig?.enableRelinkChannel !== false;
   const channelMappings = [
     ['channels.opsChannelId', opsConfig?.channels?.opsChannelId],
     ['channels.logsChannelId', recruitConfig?.channels?.decisionsLogChannelId],
     ['channels.decisionsChannelId', recruitConfig?.channels?.decisionsChannelId],
     ['channels.publicDecisionsChannelId', recruitConfig?.channels?.publicDecisionsChannelId],
     ['channels.welcomeChannelId', recruitConfig?.channels?.welcomeChannelId],
-    ['channels.relinkChannelId', recruitConfig?.channels?.relinkChannelId],
+    ...(relinkChannelEnabled ? [['channels.relinkChannelId', recruitConfig?.channels?.relinkChannelId]] : []),
     ['channels.applyChannelId', recruitConfig?.channels?.applyChannelId],
     ['channels.memberChatChannelId', recruitConfig?.channels?.memberChatChannelId],
     ['channels.leadersChatChannelId', recruitConfig?.channels?.leadersChatChannelId],

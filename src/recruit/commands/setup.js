@@ -448,7 +448,17 @@ async function handleSetupInner(interaction, ctx) {
   setRecruitSetting(db, 'channels.decisionsChannelId', decisionsChannel.id);
   setRecruitSetting(db, 'channels.publicDecisionsChannelId', publicDecisionsChannel.id);
   setRecruitSetting(db, 'channels.welcomeChannelId', welcomeChannel.id);
-  if (relinkChannel) setRecruitSetting(db, 'channels.relinkChannelId', relinkChannel.id);
+  if (relinkChannel) {
+    setRecruitSetting(db, 'channels.relinkChannelId', relinkChannel.id);
+  } else {
+    // Actively clear, not just skip writing — a clan that previously had this enabled has a
+    // real stored ID from that earlier run. Without clearing it here, ensureRelinkPost (called
+    // unconditionally on every bot startup) would keep finding that still-valid ID and keep
+    // maintaining the panel, directly contradicting the "disabled" line in the completion
+    // message below. The #relink Discord channel itself is never deleted (KRAKEN doesn't
+    // auto-delete channels) — this only stops the bot from actively managing it going forward.
+    db.prepare("DELETE FROM recruit_settings WHERE key = 'channels.relinkChannelId'").run();
+  }
   // We run onboarding and applications from #welcome (panel + modal).
   setRecruitSetting(db, 'channels.applyChannelId', welcomeChannel.id);
   // General logs go to #logs; high-signal mod decisions can use channels.decisionsChannelId.
