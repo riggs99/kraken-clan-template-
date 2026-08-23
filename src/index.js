@@ -37,6 +37,7 @@ import { getRecruitDb } from './recruit/index.js';
 import { getRecruitRuntimeIds, syncRecruitRuntimeFromConfig } from './recruit/db.js';
 import { ensureWelcomePost } from './recruit/onboarding.js';
 import { ensureRelinkPost } from './recruit/commands/apply.js';
+import { ensureBotIcon } from './brand-icon.js';
 import { ensureBreakPost } from './recruit/breaks.js';
 import { ensureAppealsPost } from './recruit/commands/appeal.js';
 import { ensureWaitlistPost, handleWaitlistRoleChange, onMemberJoin, handleMemberReturn, handleMemberLeave } from './recruit/waitlist.js';
@@ -79,6 +80,15 @@ function isRecruitOpsAuthorized(interaction) {
 
 client.once(Events.ClientReady, async c => {
   console.log('KRAKEN ONLINE as ' + c.user.tag);
+
+  // Not recruit-specific — runs regardless of whether Recruit HQ is enabled, since every
+  // clan's bot (OPS-only or not) should carry the same brand icon.
+  try {
+    await ensureBotIcon(c, getRecruitDb());
+  } catch (e) {
+    console.error('[BRAND] Bot icon step failed:', formatErrorForLog(e));
+  }
+
   startScheduler(client, recruitConfig);
   startWarScheduler(client);
 
