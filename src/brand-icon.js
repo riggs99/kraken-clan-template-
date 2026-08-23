@@ -5,10 +5,12 @@ import { getRecruitSetting, setRecruitSetting } from './recruit/db.js';
 const ICON_PATH = path.join(process.cwd(), 'assets', 'kraken-icon.png');
 
 // Bump this if the icon image is ever replaced — it's the only thing that makes
-// ensureBotIcon try again. Discord's own avatar/profile-edit endpoint is rate-limited,
-// so this is checked BEFORE calling setAvatar, not just to save a call: re-uploading
-// an identical image on every single bot restart would burn through that budget for
-// zero visible change.
+// ensureBotIcon try again. Checked BEFORE calling setAvatar so a restart never
+// re-uploads an identical image for zero visible change. Confirmed against discord.js's
+// own source (ClientUser.js) that setAvatar/setUsername share the same PATCH /users/@me
+// endpoint, and setUsername is explicitly documented there as limited to 2 requests/hour
+// — avatar isn't separately documented, but sharing the endpoint is reason enough to
+// treat it the same way rather than assume it's exempt.
 const ICON_VERSION = '1';
 
 // Sets this clan's bot avatar to the shared KRAKEN brand icon, once. Every clan's bot
