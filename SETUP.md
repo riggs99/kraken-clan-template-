@@ -161,6 +161,9 @@ builds the entire Recruit HQ automatically:
 - `#welcome` — the only channel visible to everyone, including a
   just-joined `new-arrival` who hasn't applied yet — public landing + the
   "Agree & Join" onboarding panel
+- `#relink` — same visibility as `#welcome` (created if missing, or adopted
+  by ID via `channels.relinkChannelId`) — for onboarding a clan's existing
+  roster onto KRAKEN without resetting anyone's standing; see Step 8 below
 - `#kraken-decisions` — members-only (`kraken-member` + `leaders`),
   member-facing decision summaries
 - `#on-a-break` — members-only (`kraken-member` + `leaders`), break-request
@@ -230,10 +233,13 @@ channel sitting next to the real one — never a modified or wiped one.
 
 ## Step 8 — Members join
 
-- **Existing members:** `/relink` with their player tag — keeps their standing,
-  no re-join needed.
-- **New recruits:** `/apply` (or the "Agree & Join" button in `#welcome`) with
-  their player tag. KRAKEN verifies the tag against the live clan roster, starts
+- **Existing members** (onboarding a clan that already had a roster before
+  KRAKEN): click **Link My Account** on the panel in `#relink` and submit
+  their player tag — this keeps their current standing instead of resetting
+  them to probation. Use this, not the welcome panel, for anyone who already
+  had real standing in the clan.
+- **New recruits:** click **Agree & Join** in `#welcome` and submit their
+  player tag. KRAKEN verifies the tag against the live clan roster, starts
   tracking them, and grants `kraken-member` + `probation`.
 - **In-game co-leaders / leaders:** automatically also get the `leaders` role
   when they apply (detected from their clan rank via the CR API) — provided the

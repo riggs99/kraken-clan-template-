@@ -335,6 +335,19 @@ async function handleSetupInner(interaction, ctx) {
   const welcomeChannel = await findOrCreateTextChannelById(guild, existing?.channels?.welcomeChannelId, 'welcome', welcomeOverwrites);
   // Enforce overwrites even if the channel already existed (prevents modal submit "Something went wrong" due to bot lacking SendMessages).
   await applyOverwrites(welcomeChannel, welcomeOverwrites, 'KRAKEN Recruit setup: enforce welcome permissions');
+
+  // For onboarding an EXISTING clan's roster onto KRAKEN for the first time — someone who
+  // already has real standing shouldn't go through #welcome's Agree & Join button, which
+  // always resets to probation. #relink is the parallel entry point that preserves existing
+  // standing instead (see relinkCore, apply.js). Same visibility as #welcome: readable by
+  // everyone, including someone with no KRAKEN role at all yet.
+  const relinkChannel = await findOrCreateManagedChannel(guild, {
+    configuredId: recruitConfig?.channels?.relinkChannelId,
+    storedId: existing?.channels?.relinkChannelId,
+    createName: 'relink',
+    overwrites: welcomeOverwrites,
+    enforceReason: 'KRAKEN Recruit setup: enforce relink permissions',
+  });
   const configuredDecisionsId = String(recruitConfig?.channels?.decisionsChannelId ?? '');
   const configuredDecisionsChannel = await resolveTextChannelById(guild, configuredDecisionsId);
   const decisionsChannel = configuredDecisionsChannel ?? await findOrCreateTextChannelById(guild, existing?.channels?.decisionsChannelId, 'kraken-decisions-leaders', decisionsOverwrites, leadersCategory.id);
@@ -427,6 +440,7 @@ async function handleSetupInner(interaction, ctx) {
   setRecruitSetting(db, 'channels.decisionsChannelId', decisionsChannel.id);
   setRecruitSetting(db, 'channels.publicDecisionsChannelId', publicDecisionsChannel.id);
   setRecruitSetting(db, 'channels.welcomeChannelId', welcomeChannel.id);
+  setRecruitSetting(db, 'channels.relinkChannelId', relinkChannel.id);
   // We run onboarding and applications from #welcome (panel + modal).
   setRecruitSetting(db, 'channels.applyChannelId', welcomeChannel.id);
   // General logs go to #logs; high-signal mod decisions can use channels.decisionsChannelId.
@@ -577,6 +591,7 @@ async function handleSetupInner(interaction, ctx) {
     '',
     `Channels:`,
     `- welcome: <#${welcomeChannel.id}>`,
+    `- relink: <#${relinkChannel.id}>`,
     `- kraken-decisions-leaders: <#${decisionsChannel.id}>`,
     `- kraken-decisions: <#${publicDecisionsChannel.id}>`,
     `- on-a-break: <#${onBreakChannel.id}>`,

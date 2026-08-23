@@ -398,6 +398,36 @@ still match what's documented above, no drift found.
     deployment. Fixed by excluding `ops:`/`war:`-prefixed customIds from the
     recruit dispatch entirely; see the routing-gap fix commit for detail.
 
+- **A documented `/relink` command didn't exist anywhere a user could reach
+  it — closed (2026-08-23).** `SETUP.md`/`docs/multi-clan-hosting.md` both
+  told operators to have an existing clan's members run `/relink` to keep
+  their standing when onboarding onto KRAKEN. There was no such slash
+  command, and `apply.js`'s `relinkCore` — a fully-built function that does
+  exactly this (preserves an existing member's tier instead of resetting to
+  probation, even inferring it from their current Discord role if no KRAKEN
+  profile exists yet, plus a bulk-rollout progress counter) — had **zero
+  callers anywhere**. The only reachable flow (`applyCore`, via the "Agree &
+  Join" button) unconditionally resets *everyone* to `probation`, no matter
+  their prior standing. So the actual, live behavior for onboarding an
+  existing clan's roster was either "follow docs, nothing happens" or "use
+  the only working button, and every existing member gets demoted to a
+  fresh recruit." Found by directly answering a user question about what
+  happens when KRAKEN joins an already-established server — not part of
+  the earlier systematic audit passes, which read this file but didn't
+  trace whether `relinkCore` was ever actually invoked.
+
+  Fixed by wiring `relinkCore` up as a **`#relink` channel** (a "Link My
+  Account" button + modal), the same self-service-panel pattern as
+  welcome/break/appeals/waitlist — not a slash command, since that's a
+  bigger, more consistent UX for members who don't know Discord commands,
+  and matches how the equivalent welcome flow already works. `/recruit-setup`
+  now creates `#relink` alongside `#welcome` with identical visibility (both
+  need to be visible to someone holding zero KRAKEN roles yet), stores its
+  ID the same way every other managed channel does, and `channels.relinkChannelId`
+  is a valid config override for pointing at an existing channel. All docs
+  that referenced a nonexistent `/relink` command were corrected to describe
+  the real panel.
+
 ### Cosmetic-only, no behavior change
 
 - `src/recruit/policy.js`'s `'TWO_WAR_INACTIVE'` reason-code constant

@@ -102,7 +102,11 @@ tell a clan to proceed until this checks out.
 **⑪ Hand off**
 - [ ] Confirm the bot shows online in their Discord
 - [ ] Tell them to run **`/recruit-setup`**
-- [ ] Tell them to get members running **`/apply`**
+- [ ] If this clan already had a roster before KRAKEN: tell their **existing**
+      members to use the **Link My Account** panel in `#relink`, not the
+      welcome panel — this keeps their current standing instead of resetting
+      everyone to probation
+- [ ] Tell **new** recruits to use **Agree & Join** in `#welcome`
 
 ## Notes
 

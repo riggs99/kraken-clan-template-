@@ -1,6 +1,6 @@
 import { initDb } from './db.js';
 import { formatErrorForLog } from '../security.js';
-import { applyCore } from './commands/apply.js';
+import { applyCore, relinkCore, handleRelinkButton } from './commands/apply.js';
 import { handleStatus, handleStatusAutocomplete, command as statusCommand } from './commands/status.js';
 import { handleHelp, command as helpCommand } from './commands/help.js';
 import { handleSetup, command as setupCommand } from './commands/setup.js';
@@ -164,6 +164,28 @@ export async function handleRecruitInteraction(interaction, recruitConfig) {
       }
 
       await applyCore(interaction, ctx, { tag });
+      return true;
+    }
+
+    if (interaction.isButton() && interaction.customId === 'recruit:relink:open') {
+      const relinkChannelId = String(runtime?.channels?.relinkChannelId ?? '');
+      if (relinkChannelId && interaction.channelId !== relinkChannelId) {
+        return interaction.reply({ content: 'Use the relink panel in #relink.', flags: MessageFlags.Ephemeral });
+      }
+      await handleRelinkButton(interaction);
+      return true;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'recruit:relinkModal') {
+      const tag = interaction.fields.getTextInputValue('tag');
+
+      const clean = normalizePlayerTag(tag);
+      if (!clean) {
+        await interaction.reply({ content: 'Invalid tag.', flags: MessageFlags.Ephemeral });
+        return true;
+      }
+
+      await relinkCore(interaction, ctx, { tag });
       return true;
     }
 

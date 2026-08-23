@@ -4,6 +4,7 @@
   "clanName": "PUT_YOUR_CLAN_NAME_HERE",
   "channels": {
     "welcomeChannelId": "",
+    "relinkChannelId": "",
     "applyChannelId": "",
     "memberChatChannelId": "",
     "leadersChatChannelId": "",

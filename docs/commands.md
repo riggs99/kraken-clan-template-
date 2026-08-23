@@ -47,20 +47,19 @@ All recruit commands only work inside **Recruit HQ** (guild ID set in `config/re
 
 ---
 
-### `/apply`
+### Apply (not a slash command — see the welcome panel below)
 
 **Who can use:** Any member of Recruit HQ
-**Channel:** Anywhere in Recruit HQ (also triggered by the "Agree & Join" button in #welcome)
+**How:** Click **Agree & Join** on the welcome panel in `#welcome` — this is *not* a typeable `/apply` command; that name is just what the underlying logic is called internally. Clicking it opens a modal asking for your Clash Royale player tag.
 
-Submits your Clash Royale player tag to begin tracking.
+Submitting the modal begins tracking:
 
 - Verifies the tag is currently in the KRAKEN clan roster
 - Grants `kraken-member` + `probation` roles immediately
 - Starts war performance tracking for the automated weekly review
 - DMs the full two-part welcome guide (roles, Hall of Fame, tools, feedback) on success; falls back to a short DM if DMs are blocked
 - Has a 24-hour cooldown between applications
-
-**Option:** `tag` — your player tag with or without `#` (e.g. `#ABC2YGV`)
+- Always resets you to `probation`, even if you already had standing — if you're an **existing** clan member linking to KRAKEN for the first time, use the **relink** panel in `#relink` instead (below) to keep your current tier
 
 ---
 
@@ -219,11 +218,11 @@ Use this when the channel gets cluttered, after a server restructure, or to forc
 
 One-time setup command that wires up the entire Recruit HQ server.
 
-- Creates or finds all required channels: `#welcome`, `#kraken-decisions` (public summary), `#kraken-decisions-leaders` (private log), `#on-a-break`, `#kraken-ops`, `#logs`, `#removal-queue` — the leaders-only channels are grouped under a "leaders" category
+- Creates or finds all required channels: `#welcome`, `#relink`, `#kraken-decisions` (public summary), `#kraken-decisions-leaders` (private log), `#on-a-break`, `#kraken-ops`, `#logs`, `#removal-queue` — the leaders-only channels are grouped under a "leaders" category
 - Creates or finds all required roles: `probation`, `new-arrival`, `kraken-member`, `kraken-warcore`, `kraken-underwatch`, `on a break`, `remove`, `leaders`
 - Sets correct permissions on every channel (members read-only, bot can post, leaders can post)
 - Stores all channel and role IDs in SQLite (`kraken.db`) for the evaluator and other systems to use
-- Posts/pins the welcome panel in `#welcome` and the break panel in `#on-a-break`
+- Posts/pins the welcome panel in `#welcome`, the relink panel in `#relink`, and the break panel in `#on-a-break`
 
 Run this once when setting up a new server. Safe to re-run — it refreshes IDs without breaking existing data.
 
@@ -298,7 +297,11 @@ These are triggered by clicking buttons in the server, not by typing a command.
 
 ### Welcome panel — "Agree & Join" button (`#welcome`)
 
-Opens a modal asking for your Clash Royale tag. Submitting it runs the same flow as `/apply`. This is the primary entry point for new recruits. Successfully applying also clears any waitlist entry (role + DB row) the member had.
+Opens a modal asking for your Clash Royale tag. Submitting it runs the same flow as `/apply`. This is the primary entry point for new recruits. Successfully applying also clears any waitlist entry (role + DB row) the member had. **Always resets you to `probation`** — this is for someone who has no existing standing to preserve.
+
+### Relink panel — "Link My Account" button (`#relink`)
+
+For onboarding an **existing** clan's roster onto KRAKEN for the first time, or any member who already had standing before linking. Opens a modal for the same tag input as the welcome panel, but **preserves your current tier** instead of resetting to probation — if you already have a KRAKEN profile, it keeps your stored status; if you don't but already hold a tier role in Discord (e.g. a leader manually granted `kraken-warcore` before this existed), it reads that role and keeps it. Also preserves an active break instead of clearing it, and clears any waitlist entry. Tracks how many members have completed it against an expected total, and can DM the leader who started the rollout once everyone's done.
 
 ### Break panel (`#on-a-break`)
 

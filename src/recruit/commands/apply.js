@@ -3,11 +3,12 @@ import { normalizePlayerTag } from '../../util.js';
 import { applyPublicAck, dmCooldown } from '../messages.js';
 import { getActiveBreak, getRecruitRuntimeIds, getRecruitSetting, setRecruitSetting, removeFromWaitlist, addToWaitlist } from '../db.js';
 import { suppressManualTierSync } from '../manual-role-sync.js';
-import { EmbedBuilder, MessageFlags } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { formatErrorForLog } from '../../security.js';
 import { applyRolesVerified } from '../../permissions.js';
 import { sendWelcomeGuideDm } from '../welcome-guide.js';
 import { loadRecruitConfig } from '../../config/loadConfig.js';
+import { buildDashboardContainer, CLAN_BADGE_URL, STATUS_COLORS, ensurePersistentPanel } from '../../dashboard-components.js';
 
 function isValidDiscordId(id) {
   return typeof id === 'string' && /^\d{17,20}$/.test(id);
@@ -483,6 +484,79 @@ export async function applyCore(interaction, ctx, input) {
     reviewer,
     whenISO
   }), runtime?.channels?.decisionsLogChannelId, 'Recruit onboarding decision');
+}
+
+function buildRelinkPanelContainer() {
+  return buildDashboardContainer({
+    accentColor: STATUS_COLORS.neutral,
+    thumbnailUrl: CLAN_BADGE_URL,
+    header: '## 🐙 KRAKEN — Already in the Clan?',
+    blocks: [
+      [
+        'If you\'re already a member of this clan and this is your first time linking to KRAKEN, use this instead of the welcome panel — this keeps your current standing instead of starting you over on probation.',
+        '',
+        'New to the clan? Use **#welcome** instead.',
+      ].join('\n'),
+    ],
+  });
+}
+
+function buildRelinkPanelComponents() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('recruit:relink:open')
+        .setLabel('Link My Account')
+        .setStyle(ButtonStyle.Primary),
+    ),
+  ];
+}
+
+// Panel posted in #relink on bot startup and /recruit-setup — same self-healing pattern as
+// the welcome/break/appeals/waitlist panels.
+export async function ensureRelinkPost(client, recruitConfig, db) {
+  const runtime = getRecruitRuntimeIds(db);
+  const relinkChannelId = String(runtime?.channels?.relinkChannelId ?? '');
+  if (!isValidDiscordId(relinkChannelId)) return;
+
+  const recruitGuildId = String(recruitConfig?.recruitGuildId ?? '');
+  const channel = await client.channels.fetch(relinkChannelId).catch(() => null);
+  if (!channel?.send) return;
+  if (recruitGuildId && channel.guildId && channel.guildId !== recruitGuildId) return;
+
+  const existingPanelId = String(getRecruitSetting(db, 'messages.relinkPanelId') ?? '');
+  const panelPayload = {
+    flags: MessageFlags.IsComponentsV2,
+    components: [buildRelinkPanelContainer(), ...buildRelinkPanelComponents()],
+    allowedMentions: { parse: [] },
+  };
+
+  const { message, changed } = await ensurePersistentPanel({
+    channel,
+    existingId: existingPanelId || null,
+    payload: panelPayload,
+    pin: true,
+    logPrefix: '[RECRUIT] Relink panel',
+  });
+  if (changed && message?.id) setRecruitSetting(db, 'messages.relinkPanelId', message.id);
+}
+
+// --- Member: open relink modal ---
+export async function handleRelinkButton(interaction) {
+  const modal = new ModalBuilder()
+    .setCustomId('recruit:relinkModal')
+    .setTitle('Link Your Account');
+
+  const tagInput = new TextInputBuilder()
+    .setCustomId('tag')
+    .setLabel('Player tag (with or without #)')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(20)
+    .setPlaceholder('#ABC2YGV');
+
+  modal.addComponents(new ActionRowBuilder().addComponents(tagInput));
+  await interaction.showModal(modal);
 }
 
 export async function relinkCore(interaction, ctx, input) {

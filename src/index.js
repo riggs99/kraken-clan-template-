@@ -36,6 +36,7 @@ import { handleRecruitInteraction } from './recruit/index.js';
 import { getRecruitDb } from './recruit/index.js';
 import { getRecruitRuntimeIds, syncRecruitRuntimeFromConfig } from './recruit/db.js';
 import { ensureWelcomePost } from './recruit/onboarding.js';
+import { ensureRelinkPost } from './recruit/commands/apply.js';
 import { ensureBreakPost } from './recruit/breaks.js';
 import { ensureAppealsPost } from './recruit/commands/appeal.js';
 import { ensureWaitlistPost, handleWaitlistRoleChange, onMemberJoin, handleMemberReturn, handleMemberLeave } from './recruit/waitlist.js';
@@ -113,6 +114,11 @@ client.once(Events.ClientReady, async c => {
       await ensureWelcomePost(client, recruitConfig, getRecruitDb());
     } catch (e) {
       console.error('[RECRUIT] Welcome post failed:', formatErrorForLog(e));
+    }
+    try {
+      await ensureRelinkPost(client, recruitConfig, getRecruitDb());
+    } catch (e) {
+      console.error('[RECRUIT] Relink panel failed:', formatErrorForLog(e));
     }
     try {
       await ensureBreakPost(client, recruitConfig, getRecruitDb());
