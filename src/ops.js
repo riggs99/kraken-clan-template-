@@ -796,7 +796,7 @@ function buildOverviewTab(data, page, roleCtx) {
       healthIssues,
       [
         '### Current Counts',
-        `Active today: **${activeToday}/${merged.length}** · Missing: **${enforceWarToday ? missingToday : 0}** (no grace: **${enforceWarToday ? missingTodayNoGrace : 0}**)`,
+        `Active today: **${activeToday}/${merged.length}** · Behind on war today: **${enforceWarToday ? missingToday : 0}** (no grace: **${enforceWarToday ? missingTodayNoGrace : 0}**)`,
         `War enforcement: **${enforceWarToday ? 'Active' : 'Paused'}** via **${cycleDecision.source}**${cycleDecision.anchorDecision?.cycleLabel ? ` (${cycleDecision.anchorDecision.cycleLabel})` : ''}`,
         `Inactive across window: **${warInactiveWindow}** · High risk: **${highRisk}** · Repeat offenders: **${repeatOffenders}** · Zero donors: **${zeroDonors}** · In grace: **${inGraceCount}**`,
       ].join('\n'),
@@ -804,7 +804,7 @@ function buildOverviewTab(data, page, roleCtx) {
       `### Recent Race Results\n${logText}`,
       `### Top Trophy Holders\n${bulletList(topTrophies, 'No trophy data.')}`,
       `### War Trend\n${sectionValue(['Top improvers'], improvers, 'No trend data.')}\n\n${sectionValue(['Top decliners'], decliners, 'No trend data.')}`,
-      `### 🚨 Attention Queue (${enforceWarToday ? 'Missing War First, Then Risk' : 'Training/Non-war: Risk Only'})\n${attentionTable ?? 'No attention items right now.'}`,
+      `### 🚨 Attention Queue (${enforceWarToday ? 'Behind on War First, Then Risk' : 'Training/Non-war: Risk Only'})\n${attentionTable ?? 'No attention items right now.'}`,
     ],
     page: slice.page,
     totalPages: slice.totalPages,

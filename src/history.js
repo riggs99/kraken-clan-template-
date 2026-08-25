@@ -2,7 +2,8 @@
 import path from 'node:path';
 import { todayKeyISO, cleanTag } from './util.js';
 import { extractLatestClanLogParticipants } from './war-intel.js';
-import { isHistoricalWarDay, parseWarAnchorMsFromEnv } from './war-cycle.js';
+import { isHistoricalWarDay, parseWarAnchorMsFromEnv, warDayFromAnchorCycle } from './war-cycle.js';
+import { readJson, writeJson } from './json-store.js';
 
 // Exported so every script/command that needs to check-for/back-up this exact
 // file (scripts/season-reset.js, scripts/full-clan-reset.js,
@@ -10,38 +11,8 @@ import { isHistoricalWarDay, parseWarAnchorMsFromEnv } from './war-cycle.js';
 // each re-deriving the same path.join(...) independently.
 export const HISTORY_PATH = path.join(process.cwd(), 'data', 'history.json');
 
-function readJson(filePath, fallback) {
-  try {
-    if (!fs.existsSync(filePath)) return fallback;
-    const raw = fs.readFileSync(filePath, 'utf8');
-    if (!raw.trim()) return fallback;
-    return JSON.parse(raw);
-  } catch (e) {
-    // A corrupt/truncated file (e.g. a hard kill mid-write, matching
-    // src/discipline.js's same fix) used to silently fall back here with no
-    // trace, and the very next save would then persist that empty state over
-    // the real one — log it so a wiped history.json is at least visible.
-    console.error(`[HISTORY] Failed to read ${filePath}, falling back to default:`, e?.message ?? String(e));
-    return fallback;
-  }
-}
-
-function writeJson(filePath, obj) {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  // Write to a temp file then rename — a raw writeFileSync can leave a
-  // truncated/invalid file if the process is killed mid-write (this
-  // project's own restart procedure is a hard taskkill, not a graceful
-  // shutdown), and the next readJson() would then silently reset to empty
-  // and persist that. A rename is atomic on the same filesystem, so readers
-  // never see a partial file. Matches src/discipline.js's identical fix.
-  const tmpPath = `${filePath}.tmp-${process.pid}`;
-  fs.writeFileSync(tmpPath, JSON.stringify(obj, null, 2), 'utf8');
-  fs.renameSync(tmpPath, filePath);
-}
-
 export function loadHistory() {
-  return readJson(HISTORY_PATH, { firstSeen: {}, days: {} });
+  return readJson(HISTORY_PATH, { firstSeen: {}, days: {} }, 'HISTORY');
 }
 
 export function saveHistory(h) {
@@ -108,6 +79,48 @@ function yesterdayKeyISO(day) {
   const t = Date.parse(`${day}T00:00:00Z`);
   if (!Number.isFinite(t)) return null;
   return new Date(t - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function nextDayKeyISO(day) {
+  const t = Date.parse(`${day}T00:00:00Z`);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+// Distinguishes a real training-day gap between two separate war weeks from an
+// outage that swallowed one or more snapshots mid-week — both look identical
+// as "a missing calendar day between two known war-day entries" by themselves.
+// Walks every calendar day strictly between the two known entries (not just
+// existing history.days keys) and checks each one against the anchor cycle:
+// if every day in the gap is a genuine anchor-predicted training day, this is
+// a real week boundary; if any of them should have been a war day, a snapshot
+// is missing and the gap is inside one week, not between two.
+//
+// Bounded to one race-week cycle (6 days) before scanning at all: a gap that
+// long can never be "a single missing snapshot inside the same week" — the
+// week cycle itself is only 7 days — so it's always at least a full missing
+// week (or worse), and must be treated as a real boundary regardless of what
+// anchor-predicted days fall inside it. Without this, a multi-week outage
+// (e.g. an entire missed war week) still contains an anchor-predicted war day
+// somewhere in the gap, so the unbounded scan below used to return false and
+// silently merge two genuinely separate weeks into one fake mega-week — the
+// exact corruption this function exists to prevent, just via a longer gap.
+function gapSpansOnlyTrainingDays(afterDayExclusive, beforeDayExclusive, anchorMs) {
+  if (!Number.isFinite(anchorMs)) return true;
+  const afterMs = Date.parse(`${afterDayExclusive}T00:00:00Z`);
+  const beforeMs = Date.parse(`${beforeDayExclusive}T00:00:00Z`);
+  if (!Number.isFinite(afterMs) || !Number.isFinite(beforeMs)) return true;
+  const spanDays = Math.round((beforeMs - afterMs) / (24 * 60 * 60 * 1000));
+  if (spanDays > 6) return true;
+
+  let cursor = nextDayKeyISO(afterDayExclusive);
+  while (cursor && cursor < beforeDayExclusive) {
+    const dayMs = Date.parse(`${cursor}T12:00:00Z`);
+    const anchorDecision = Number.isFinite(dayMs) ? warDayFromAnchorCycle(dayMs, anchorMs) : null;
+    if (anchorDecision?.isWarDay) return false;
+    cursor = nextDayKeyISO(cursor);
+  }
+  return true;
 }
 
 export function upsertTodaySnapshot(members, meta = {}) {
@@ -527,7 +540,8 @@ export function getCompletedWarWeeks(history, { maxWeeks = null, anchorMs = null
       // streaks and season rankings. Stop the week here instead; the
       // earlier day(s) start their own (possibly separate) week on the next
       // outer-loop iteration.
-      if (weekDays.length > 0 && yesterdayKeyISO(weekDays[0]) !== day) break;
+      if (weekDays.length > 0 && yesterdayKeyISO(weekDays[0]) !== day
+        && gapSpansOnlyTrainingDays(day, weekDays[0], resolvedAnchor)) break;
       weekDays.unshift(day);
       i--;
     }

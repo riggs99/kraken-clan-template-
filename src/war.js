@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { extractRaceMeta } from './war-intel.js';
-import { getWarDayDecision, isWarActivityPresent } from './war-cycle.js';
+import { getWarDayDecision, isWarActivityPresent, raceWeekPosition } from './war-cycle.js';
 import { categorizeTierDecisions, explainPolicyReason } from './recruit/policy.js';
 import { renderTable, renderSpotlight, buildDashboardContainer, CLAN_BADGE_URL, STATUS_COLORS } from './dashboard-components.js';
 import { cleanTag, daysSinceLastSeen, formatDaysAgo } from './util.js';
@@ -94,7 +94,7 @@ function warPagingRow(state, paging) {
   return row;
 }
 
-// Same numbered-line density as the rest of this view (Missing War Today, Boat
+// Same numbered-line density as the rest of this view (Behind on War Today, Boat
 // Actions) — capped at 5 with a pointer to /standings rather than a second
 // incomplete copy of its fully-paginated decision board.
 function bucketLines(rows) {
@@ -108,6 +108,15 @@ function bucketLines(rows) {
       : '';
     return `${i + 1}) **${r.name ?? `#${tag}`}** | 🃏${deckBits}${reason ? ` | ${reason}` : ''}`;
   });
+}
+
+// Human label for where today sits in the race week, derived from the same
+// periodIndex math as isWarDayFromRacePeriod, for display alongside the
+// tables below (e.g. "War Day 2/4" or "Training Day 1/3").
+function describeWarCycleDay(periodIndex) {
+  const inWeek = raceWeekPosition(periodIndex);
+  if (inWeek === null) return null;
+  return inWeek > 2 ? `War Day ${inWeek - 2}/4` : `Training Day ${inWeek + 1}/3`;
 }
 
 function bucketBlock(title, rows) {
@@ -160,6 +169,7 @@ function buildWarView(data, page, roleCtx, windowDays = 7) {
   const derivedPhase = (cycleDecision.source === 'anchor' && cycleDecision.anchorDecision?.cycleLabel)
     ? cycleDecision.anchorDecision.cycleLabel
     : (cycleDecision.shouldJudgeToday ? 'war-active' : 'training/non-war');
+  const cycleDayLabel = describeWarCycleDay(meta.periodIndex);
 
   const edpd = getExpectedDecksPerDay();
   const policyByTag = new Map((data.policyRows ?? []).map(r => [cleanTag(r.tag), r]));
@@ -213,7 +223,17 @@ function buildWarView(data, page, roleCtx, windowDays = 7) {
       .slice()
       .sort((a, b) => Number(b.risk ?? 0) - Number(a.risk ?? 0))
       .slice(0, 8)
-      .map((m, i) => `${i + 1}) ${displayNameWithRoles(m, roleCtx)} | 🎯${Math.round(Number(m.risk ?? 0) * 100)}% | ⚔${m.warParticipationRate ?? 0}% | ⏱${formatDaysAgo(daysSinceLastSeen(m.lastSeen))}`)
+      .map((m, i) => {
+        const todayUsed = Number(m.decksUsedToday ?? 0);
+        const sum7 = policyByTag.get(cleanTag(m.tag))?.sum7;
+        const windowUsed = Number(sum7?.usedDecks ?? 0);
+        const windowExpected = Number(sum7?.expectedDecks ?? 0);
+        const riskPct = Math.round(Number(m.risk ?? 0) * 100);
+        const reasonRaw = Array.isArray(m.reasons) && m.reasons.length ? m.reasons[0] : 'No data yet';
+        const reason = reasonRaw.length > 28 ? `${reasonRaw.slice(0, 27)}…` : reasonRaw;
+        const seenText = formatDaysAgo(daysSinceLastSeen(m.lastSeen));
+        return `${i + 1}) ${displayNameWithRoles(m, roleCtx)}\n🃏${todayUsed}/${edpd} (${windowUsed}/${windowExpected}) · 🎯${riskPct}% — ${reason} · ⏱${seenText}`;
+      })
     : [];
 
   const todayTable = renderTable(
@@ -225,6 +245,7 @@ function buildWarView(data, page, roleCtx, windowDays = 7) {
       { key: 'todayDecks', label: 'Today', width: 5, align: 'right' },
       { key: 'rep', label: 'Rep', width: 4, align: 'right' },
       { key: 'boat', label: 'Boat', width: 4, align: 'right' },
+      { key: 'missed', label: 'Miss', width: 4, align: 'right' },
     ],
     rankedToday.slice(0, 8).map((m, i) => {
       const sum7 = policyByTag.get(cleanTag(m.tag))?.sum7;
@@ -239,6 +260,7 @@ function buildWarView(data, page, roleCtx, windowDays = 7) {
         todayDecks: `${todayUsed}/${edpd}`,
         rep: Number(m.repairPoints ?? 0),
         boat: Number(m.boatAttacks ?? 0),
+        missed: Number(sum7?.missedWarDays ?? 0),
       };
     }),
   );
@@ -300,7 +322,7 @@ function buildWarView(data, page, roleCtx, windowDays = 7) {
       [
         '### 📊 War Snapshot',
         `Section/Period: **${meta.sectionIndex ?? '-'} / ${meta.periodIndex ?? '-'}**`,
-        `Active today: **${activeNow}/${data.members.length}** · Missing today: **${missingNow}**`,
+        `Active today: **${activeNow}/${data.members.length}** · Behind on war today: **${missingNow}**`,
         `Clan health: **${data.health.score}/100 (${data.health.grade})**`,
       ].join('\n'),
       [
@@ -310,17 +332,23 @@ function buildWarView(data, page, roleCtx, windowDays = 7) {
       ].join('\n'),
       ...decisions.blocks,
       [
-        `### 🏅 Top War Contribution (${winLabel} window)`,
-        '_Fame = earned in window · War wk = decks used/expected across tracked war days (e.g. 12/16)_',
+        `### 📈 War Trend (${winLabel} window${cycleDayLabel ? ` · today is ${cycleDayLabel}` : ''})`,
+        '_Fame = earned in window · War wk = decks used/expected across tracked war days (e.g. 12/16). This is a rolling window, not one war week — it can span the tail of a previous week and the start of the current one._',
         warTable ?? 'No war contribution data yet.',
       ].join('\n'),
       [
-        '### 🔴 Live Race (API right now)',
-        '_Race = cumulative week fame · Wk = race decksUsed total · Today = battles this Supercell day only (0 = not played yet)_',
+        `### 🔴 Live Race (right now${cycleDayLabel ? ` · ${cycleDayLabel}` : ''})`,
+        '_Race = cumulative week fame · Wk = race decksUsed total · Today = battles this Supercell day only (0 = not played yet) · Rep = boat repair points contributed · Boat = boat attacks used · Miss = war days with zero deck activity this week_',
         todayTable ?? 'No live race data yet.',
       ].join('\n'),
       `### 🚤 Boat Actions\n**Window offenders:**\n${formatList(boatNegWindow, 'None')}\n\n**Today offenders:**\n${formatList(boatNegToday, 'None')}`,
-      `### 🚫 Missing War Today\n${formatList(missingLines, cycleDecision.shouldJudgeToday ? 'No one is missing war today.' : 'Not a war day — nothing to report.')}`,
+      [
+        '### ⏳ Behind on War Today',
+        '_🃏 = decks used today (cumulative this window) · 🎯 = risk score — top reason · ⏱ = last seen_',
+        missingLines.length
+          ? missingLines.join('\n\n')
+          : (cycleDecision.shouldJudgeToday ? 'Everyone has played today.' : 'Not a war day — nothing to report.'),
+      ].join('\n'),
     ],
     page: slice.page,
     totalPages: slice.totalPages,

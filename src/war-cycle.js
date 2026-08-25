@@ -54,13 +54,21 @@ export function warDayFromPeriodType(race) {
   return null;
 }
 
-export function isWarDayFromRacePeriod(race) {
-  const periodIndex = Number(race?.periodIndex);
-  if (!Number.isFinite(periodIndex)) return null;
+// `periodIndex` is the day-of-season counter (e.g. 0..27), so reduce it to the
+// 0..6 position within the race week. Days 0..2 are training; 3..6 are war days.
+// Explicitly null-checked before Number(): Number(null) is 0, not NaN, so an
+// explicitly-null periodIndex used to silently read as day-index 0 ("training day
+// 1") instead of "unknown."
+export function raceWeekPosition(periodIndex) {
+  if (periodIndex === null || periodIndex === undefined) return null;
+  const idx = Number(periodIndex);
+  if (!Number.isFinite(idx)) return null;
+  return ((idx % 7) + 7) % 7;
+}
 
-  // `periodIndex` is the day-of-season counter (e.g. 0..27), so reduce it to the
-  // 0..6 position within the race week. Days 0..2 are training; 3..6 are war days.
-  const inWeek = ((periodIndex % 7) + 7) % 7;
+export function isWarDayFromRacePeriod(race) {
+  const inWeek = raceWeekPosition(race?.periodIndex);
+  if (inWeek === null) return null;
   return inWeek > 2;
 }
 

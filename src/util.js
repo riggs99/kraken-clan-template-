@@ -40,10 +40,26 @@ export function daysBetweenISO(fromISO, toISO) {
   }
 }
 
+// The CR clan-member API returns lastSeen in Supercell's own compact format
+// (YYYYMMDDTHHmmss.SSSZ — no dashes or colons), which `new Date()` cannot parse
+// (silently returns Invalid Date rather than throwing). Reformatted into real
+// ISO-8601 before parsing.
+function parseSupercellTimestamp(raw) {
+  const s = String(raw ?? '');
+  const m = s.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\.\d+)?Z$/);
+  if (!m) return null;
+  const [, yyyy, mo, dd, hh, mi, ss, frac] = m;
+  const iso = `${yyyy}-${mo}-${dd}T${hh}:${mi}:${ss}${frac ?? ''}Z`;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+
 export function daysSinceLastSeen(lastSeenISO) {
   if (!lastSeenISO) return null;
   try {
-    const lastSeen = new Date(lastSeenISO).getTime();
+    let lastSeen = new Date(lastSeenISO).getTime();
+    if (!Number.isFinite(lastSeen)) lastSeen = parseSupercellTimestamp(lastSeenISO);
+    if (!Number.isFinite(lastSeen)) return null;
     const now = Date.now();
     const diff = Math.floor((now - lastSeen) / (1000 * 60 * 60 * 24));
     return Number.isFinite(diff) ? diff : null;

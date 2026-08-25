@@ -2264,12 +2264,17 @@ export function startRecruitEvaluator(client, recruitConfig, db) {
   }, POLL_MS);
 
   // Run once immediately on startup — acts as both the initial baseline read and
-  // catch-up for a transition that happened while the bot was offline.
-  tick().catch(() => {});
-  // Startup audit-only backfill summary: surfaces prior-day stats after downtime.
-  runStartupBackfillAudit({ client, recruitConfig, db }).catch(() => {});
-  // Startup role-drift audit: catches Discord role changes made manually
-  // while KRAKEN was offline, which nothing else in this codebase can ever
-  // detect (manual-role-sync.js only reacts to live gateway events).
-  runStartupRoleDriftAudit({ client, recruitConfig, db }).catch(() => {});
+  // catch-up for a transition that happened while the bot was offline. The two
+  // startup audits below both read profiles.status + live Discord roles, and
+  // tick() can write both on a genuine transition — running them concurrently
+  // with tick() can misread tick()'s own routine sync as manual role drift, so
+  // they're sequenced to run only after this first tick settles.
+  tick().catch(() => {}).finally(() => {
+    // Startup audit-only backfill summary: surfaces prior-day stats after downtime.
+    runStartupBackfillAudit({ client, recruitConfig, db }).catch(() => {});
+    // Startup role-drift audit: catches Discord role changes made manually
+    // while KRAKEN was offline, which nothing else in this codebase can ever
+    // detect (manual-role-sync.js only reacts to live gateway events).
+    runStartupRoleDriftAudit({ client, recruitConfig, db }).catch(() => {});
+  });
 }

@@ -126,7 +126,7 @@ export function shouldRunBackup(lastBackup) {
   const targetHour = 3; // 03:00 UTC — outside the 20:00 UTC report window and typical war-day activity
 
   if (!lastDate || lastDate.toDateString() !== now.toDateString()) {
-    if (now.getUTCHours() === targetHour) return true;
+    if (now.getUTCHours() >= targetHour) return true;
   }
   return false;
 }
