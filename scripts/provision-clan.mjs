@@ -479,30 +479,38 @@ async function main() {
       fail('npm install failed — see output above. Re-run this script to resume from here.');
     }
 
-    log('\nRunning npm run setup-check...');
-    const checkResult = run('npm', ['run', 'setup-check'], { cwd: targetDir });
-    if (checkResult.status !== 0) {
-      appendLog({ slug, action: 'provision-failed', step: 'setup-check' });
-      fail('setup-check failed (see [FAIL] lines above for the exact fix). Fix the reported issue, then re-run this script with the same --name to resume.');
-    }
-
+    // deploy-commands.js runs BEFORE setup-check, not after: setup-check's own
+    // slash-commands check can only ever pass once commands have already been
+    // deployed, so gating deploy-commands.js behind a fully-passing setup-check
+    // is a deadlock on a genuinely fresh clan — confirmed live, this exact
+    // ordering bug surfaced the first time this path was actually exercised
+    // end-to-end. deploy-commands.js only needs a valid token/app-id/guild-id
+    // (already written above), not bot-membership, so it doesn't depend on
+    // setup-check having passed first.
     log('\nDeploying Discord slash commands...');
     const deployResult = run('node', ['scripts/deploy-commands.js'], { cwd: targetDir });
     if (deployResult.status !== 0) {
       appendLog({ slug, action: 'provision-failed', step: 'deploy-commands' });
       fail('deploy-commands.js failed — see output above. Re-run this script with the same --name to resume.');
     }
-  } else if (resumeMode === 'reuse-config') {
-    log('\nRe-running setup-check and deploy-commands against the existing config...');
+
+    log('\nRunning npm run setup-check...');
     const checkResult = run('npm', ['run', 'setup-check'], { cwd: targetDir });
     if (checkResult.status !== 0) {
       appendLog({ slug, action: 'provision-failed', step: 'setup-check' });
-      fail('setup-check failed — fix the reported issue and re-run.');
+      fail('setup-check failed (see [FAIL] lines above for the exact fix). Fix the reported issue, then re-run this script with the same --name to resume.');
     }
+  } else if (resumeMode === 'reuse-config') {
+    log('\nRe-running deploy-commands and setup-check against the existing config...');
     const deployResult = run('node', ['scripts/deploy-commands.js'], { cwd: targetDir });
     if (deployResult.status !== 0) {
       appendLog({ slug, action: 'provision-failed', step: 'deploy-commands' });
       fail('deploy-commands.js failed — see output above.');
+    }
+    const checkResult = run('npm', ['run', 'setup-check'], { cwd: targetDir });
+    if (checkResult.status !== 0) {
+      appendLog({ slug, action: 'provision-failed', step: 'setup-check' });
+      fail('setup-check failed — fix the reported issue and re-run.');
     }
   }
 
