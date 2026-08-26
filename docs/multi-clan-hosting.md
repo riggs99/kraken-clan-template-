@@ -50,6 +50,26 @@ That's the whole one-time part. Everything else below repeats per clan.
 
 ## Part B — Add a clan (repeat for each new one)
 
+**Recommended: use `scripts/provision-clan.mjs` instead of doing this by
+hand.** Run from a dedicated reference checkout at `/root/clans/_template`
+(cloned once, never itself started as a bot, `git pull`ed before each use):
+
+```bash
+node /root/clans/_template/scripts/provision-clan.mjs --name <slug>
+```
+
+It walks through steps 1-2's credentials interactively, then automates
+steps 3-6 below — folder/clone, config files, `setup-check`, command
+deploy, and a `pm2 start` gated behind a RAM-headroom check — refusing to
+proceed on a name collision, a failed check, or low memory rather than
+guessing. Step 7 (running `/recruit-setup` in their Discord) is still the
+clan leader's own action. See [docs/onboard-a-clan.md](onboard-a-clan.md)
+for the fuller walkthrough of what it does and how it behaves on a partial
+failure.
+
+The manual steps below are what it's automating — still the right reference
+if the script stops partway, or if you'd rather do a given clan by hand.
+
 Pick a short, consistent name for each clan (e.g. `clan-a`, `clan-b`) — used
 consistently below.
 

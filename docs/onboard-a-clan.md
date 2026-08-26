@@ -6,6 +6,30 @@ in. For getting the *first* instance and the VPS itself set up, see
 [SETUP.md](../SETUP.md) and [multi-clan-hosting.md](multi-clan-hosting.md)
 instead; this doc assumes that part is already done.
 
+## The automated path (recommended)
+
+Everything from step ⑤ onward below — once the bot itself exists (step ②
+above it, still a manual Developer Portal click) — is now handled by
+`scripts/provision-clan.mjs`, run from a dedicated reference checkout that's
+never itself started as a bot:
+
+```bash
+node /root/clans/_template/scripts/provision-clan.mjs --name <slug>
+```
+
+It prompts for the clan tag, Discord IDs, bot token, and CR API key
+(steps ①⑥⑦ below), builds the invite link itself and pauses for you to send
+it and confirm the bot has joined (steps ③④), then runs `npm install`,
+`setup-check`, `deploy-commands.js`, a RAM-headroom check, and `pm2 start`
+under a generated per-clan `ecosystem.config.cjs` (steps ⑤-⑨) — refusing to
+proceed (rather than guessing) on a name collision, a failed check, or low
+memory. Use `--dry-run` first if you want to see exactly what it would do
+without touching anything.
+
+**The manual runbook below still matters** — it's what the script is
+actually automating, and it's what you fall back to if the script stops
+partway and you need to see exactly what state things are in.
+
 ## What to send a clan that replies
 
 > *"Awesome, keen to get you set up! I just need two things from you:*
@@ -119,8 +143,10 @@ tell a clan to proceed until this checks out.
   default) or **leader-gated** (set `waitlistRequiresApproval: true` in
   their config — nobody's added until a leader manually assigns the
   `waitlist` role to someone they've approved).
-- One VPS can comfortably host ~8 fully active clans on a 1GB box before
-  resizing to 2GB is worth considering — see the sizing discussion in this
-  project's history if you need the reasoning again.
+- One VPS can comfortably host ~5-6 fully active clans on a 1GB box before
+  resizing to 2GB is worth considering. Measured directly, not estimated:
+  the real running instance on `kraken-host` uses ~95MB RSS, against ~561MB
+  available with just that one instance up — a more reliable number than
+  this doc's earlier ~8-clan guess.
 - If a clan ever wants to stop, `pm2 delete "<their-clan-name>"` removes
   the process (their folder/data stays on disk unless you also delete it).

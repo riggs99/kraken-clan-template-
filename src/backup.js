@@ -7,9 +7,14 @@ import { HISTORY_PATH } from './history.js';
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DISCIPLINE_PATH = path.join(DATA_DIR, 'discipline.json');
 const BACKUP_STAGING_DIR = path.join(DATA_DIR, 'backup-staging');
-// Daily backups, kept for 30 days. At ~14 KB/day combined (measured against
-// real production data) even a year of history.json/kraken.db growth stays
-// far under Discord's per-file upload limit, so retention depth costs
+// Daily backups, kept for 30 days. The original ~14 KB/day combined estimate
+// here was measured against one real (smaller, ~18-member) clan's actual
+// data — growth scales with roster size, and a synthetic stress test against
+// a full 50-member roster (Clash Royale's clan cap) over 3 years measured
+// closer to ~21-22 KB/day for history.json alone. Even at that worst case,
+// gzip (already applied below) shrinks this repetitive JSON well enough that
+// a year of history.json/kraken.db growth still stays comfortably under
+// Discord's per-file upload limit, so retention depth still costs
 // essentially nothing — 30 days trades a bit more channel history for a
 // meaningfully bigger recovery window than the original 2-week default.
 const RETENTION_COUNT = 30;
