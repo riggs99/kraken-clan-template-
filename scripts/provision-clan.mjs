@@ -12,7 +12,6 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -140,41 +139,50 @@ function pm2Logs(name, lines = 30) {
   return spawnSync('pm2', ['logs', name, '--lines', String(lines), '--nostream'], { encoding: 'utf8' });
 }
 
-// --- Readline / prompts -----------------------------------------------------
+// --- Prompts -----------------------------------------------------
+// Deliberately NOT using node:readline. An earlier version mixed
+// readline.question() (for normal prompts) with a separate hand-rolled
+// raw-mode reader (for masked ones) — confirmed live on the actual host that
+// this produced a real bug: a masked token prompt echoed a mix of real
+// characters and asterisks instead of all asterisks, almost certainly
+// readline's own internal keypress/echo handling on a real TTY still firing
+// even with the raw-mode override active. Fixed by dropping readline
+// entirely and routing every prompt (masked or not) through the exact same
+// single raw-mode reader below — there is only ever one thing echoing a
+// character to the screen now, so there is nothing left for it to race
+// against. Trade-off: no arrow-key cursor movement or input history, just
+// typing and backspace — an acceptable simplification for a one-time setup
+// wizard, not a general-purpose shell.
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
-function ask(promptText) {
-  return new Promise(resolve => rl.question(promptText, answer => resolve(answer.trim())));
-}
-
-// Hand-rolled masked input — Node has no built-in masked prompt. Reads raw
-// keystrokes directly off stdin (pausing the shared readline interface while
-// doing so, then resuming it) so a bot token/API key is never echoed or left
-// sitting in shell history. Requires a real TTY (verified before this is ever
-// called — see the startup checks below).
-function askMasked(promptText) {
+function readLine({ mask = false } = {}) {
   return new Promise(resolve => {
-    rl.pause();
-    process.stdout.write(promptText);
     let input = '';
     const stdin = process.stdin;
+    const wasRaw = Boolean(stdin.isRaw);
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+
+    function cleanup() {
+      stdin.removeListener('data', onData);
+      stdin.setRawMode(wasRaw);
+      stdin.pause();
+    }
+
     const onData = (buf) => {
-      const s = buf.toString('utf8');
-      for (const ch of s) {
+      for (const ch of buf) {
         if (ch === '\r' || ch === '\n') {
-          stdin.setRawMode(false);
-          stdin.removeListener('data', onData);
+          cleanup();
           process.stdout.write('\n');
-          rl.resume();
           resolve(input);
           return;
         }
         if (ch === '') { // Ctrl+C
+          cleanup();
           process.stdout.write('\n');
           process.exit(130);
         }
-        if (ch === '' || ch === '\b') {
+        if (ch === '' || ch === '\b') { // backspace/DEL
           if (input.length > 0) {
             input = input.slice(0, -1);
             process.stdout.write('\b \b');
@@ -182,14 +190,23 @@ function askMasked(promptText) {
           continue;
         }
         input += ch;
-        process.stdout.write('*');
+        process.stdout.write(mask ? '*' : ch);
       }
     };
-    stdin.setRawMode(true);
-    stdin.resume();
-    stdin.setEncoding('utf8');
     stdin.on('data', onData);
   });
+}
+
+async function ask(promptText) {
+  process.stdout.write(promptText);
+  const value = await readLine({ mask: false });
+  return value.trim();
+}
+
+async function askMasked(promptText) {
+  process.stdout.write(promptText);
+  const value = await readLine({ mask: true });
+  return value.trim();
 }
 
 async function askValidated(promptText, validator, errorMsg) {
@@ -203,7 +220,7 @@ async function askValidated(promptText, validator, errorMsg) {
 async function askMaskedRequired(promptText) {
   for (;;) {
     const value = await askMasked(promptText);
-    if (value.trim().length > 0) return value.trim();
+    if (value.length > 0) return value;
     log('  This value is required.');
   }
 }
@@ -522,8 +539,6 @@ async function main() {
   log(`Next: tell the clan leader to run /recruit-setup in their server.`);
   log(`  - Existing roster? Members use the "Link My Account" panel in #relink (keeps standing).`);
   log(`  - Brand-new recruits? Members use "Agree & Join" in #welcome.`);
-
-  rl.close();
 }
 
 async function collectInputs() {
@@ -593,5 +608,4 @@ main().catch(err => {
     process.stderr.write(`\n[PROVISION] Unexpected error: ${redact(err?.stack || err?.message || String(err))}\n`);
     process.exitCode = 1;
   }
-  rl.close();
 });
