@@ -36,7 +36,11 @@ Wait. Then try.`;
 // that's genuinely clan-specific; everything else is KRAKEN's own voice.
 export function buildWelcomeMarkdown(clanName) {
   const name = String(clanName ?? '').trim() || 'the clan';
-  return `You stand at the gates of **${name}**.
+  return `**Already a member of ${name}?** Use **Link My Account** below instead — Agree & Join resets you to probation, even if you already have standing.
+
+------------------
+
+You stand at the gates of **${name}**.
 I am **KRAKEN** - ancient sentinel of war discipline.
 
 This hall is not for noise.
