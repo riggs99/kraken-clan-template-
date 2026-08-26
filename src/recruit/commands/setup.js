@@ -1,6 +1,7 @@
 import { PermissionFlagsBits, ChannelType, MessageFlags } from 'discord.js';
 import { getRecruitRuntimeIds, setRecruitSetting } from '../db.js';
 import { ensureWelcomePost } from '../onboarding.js';
+import { ensureRelinkPost } from './apply.js';
 import { ensureBreakPost } from '../breaks.js';
 import { ensureAppealsPost } from './appeal.js';
 import { isServerOwner } from '../../permissions.js';
@@ -332,30 +333,28 @@ async function handleSetupInner(interaction, ctx) {
     { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
     { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
   ];
-  const welcomeChannel = await findOrCreateTextChannelById(guild, existing?.channels?.welcomeChannelId, 'welcome', welcomeOverwrites);
+  // #welcome and #relink used to be two separate channels with identical visibility, which
+  // looked redundant to an operator seeing both listed side by side for a fresh clan. They
+  // now share one channel (created fresh as "link-account"; an existing clan's already-created
+  // #welcome channel is resolved and reused as-is, never renamed) — Agree & Join and Link My
+  // Account both post into it as two independent panels, same as they always have. An operator
+  // who explicitly sets channels.relinkChannelId to a real, different channel ID in config still
+  // gets that override (see syncRecruitRuntimeFromConfig) — merging only changes the default.
+  const welcomeChannel = await findOrCreateTextChannelById(guild, existing?.channels?.welcomeChannelId, 'link-account', welcomeOverwrites);
   // Enforce overwrites even if the channel already existed (prevents modal submit "Something went wrong" due to bot lacking SendMessages).
   await applyOverwrites(welcomeChannel, welcomeOverwrites, 'KRAKEN Recruit setup: enforce welcome permissions');
 
   // For onboarding an EXISTING clan's roster onto KRAKEN for the first time — someone who
-  // already has real standing shouldn't go through #welcome's Agree & Join button, which
-  // always resets to probation. #relink is the parallel entry point that preserves existing
-  // standing instead (see relinkCore, apply.js). Same visibility as #welcome: readable by
-  // everyone, including someone with no KRAKEN role at all yet.
+  // already has real standing shouldn't go through the Agree & Join button, which always
+  // resets to probation. Link My Account is the parallel entry point that preserves existing
+  // standing instead (see relinkCore, apply.js), posted into the same shared channel above.
   //
   // enableRelinkChannel defaults to true (undefined/missing counts as on, so existing clan
   // configs that predate this flag keep getting it) — a leader onboarding a genuinely
-  // brand-new server with no prior roster can set this false to skip creating a channel
+  // brand-new server with no prior roster can set this false to skip posting a panel
   // nobody there will ever need to click.
   const relinkEnabled = recruitConfig?.enableRelinkChannel !== false;
-  const relinkChannel = relinkEnabled
-    ? await findOrCreateManagedChannel(guild, {
-        configuredId: recruitConfig?.channels?.relinkChannelId,
-        storedId: existing?.channels?.relinkChannelId,
-        createName: 'relink',
-        overwrites: welcomeOverwrites,
-        enforceReason: 'KRAKEN Recruit setup: enforce relink permissions',
-      })
-    : null;
+  const relinkChannel = relinkEnabled ? welcomeChannel : null;
   const configuredDecisionsId = String(recruitConfig?.channels?.decisionsChannelId ?? '');
   const configuredDecisionsChannel = await resolveTextChannelById(guild, configuredDecisionsId);
   const decisionsChannel = configuredDecisionsChannel ?? await findOrCreateTextChannelById(guild, existing?.channels?.decisionsChannelId, 'kraken-decisions-leaders', decisionsOverwrites, leadersCategory.id);
@@ -563,6 +562,15 @@ async function handleSetupInner(interaction, ctx) {
   } catch {
     // ignore
   }
+  // Post/pin the relink panel into the same channel right away too — previously this only
+  // ever ran from index.js's ClientReady handler, so running /recruit-setup on an already-running
+  // bot (the normal case, not just a fresh boot) left the Link My Account panel missing until
+  // the next full process restart. Harmless no-op if relink is disabled or the channel isn't set.
+  try {
+    await ensureRelinkPost(interaction.client, recruitConfig, db);
+  } catch {
+    // ignore
+  }
   try {
     await ensureBreakPost(interaction.client, recruitConfig, db);
   } catch {
@@ -608,8 +616,9 @@ async function handleSetupInner(interaction, ctx) {
     '✅ Recruit HQ setup complete.',
     '',
     `Channels:`,
-    `- welcome: <#${welcomeChannel.id}>`,
-    ...(relinkChannel ? [`- relink: <#${relinkChannel.id}>`] : ['- relink: disabled (enableRelinkChannel: false in config)']),
+    relinkChannel
+      ? `- link-account (Agree & Join + Link My Account): <#${welcomeChannel.id}>`
+      : `- link-account (Agree & Join only — relink disabled via enableRelinkChannel: false): <#${welcomeChannel.id}>`,
     `- kraken-decisions-leaders: <#${decisionsChannel.id}>`,
     `- kraken-decisions: <#${publicDecisionsChannel.id}>`,
     `- on-a-break: <#${onBreakChannel.id}>`,

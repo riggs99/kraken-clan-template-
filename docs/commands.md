@@ -50,7 +50,7 @@ All recruit commands only work inside **Recruit HQ** (guild ID set in `config/re
 ### Apply (not a slash command — see the welcome panel below)
 
 **Who can use:** Any member of Recruit HQ
-**How:** Click **Agree & Join** on the welcome panel in `#welcome` — this is *not* a typeable `/apply` command; that name is just what the underlying logic is called internally. Clicking it opens a modal asking for your Clash Royale player tag.
+**How:** Click **Agree & Join** on the welcome panel in `#link-account` — this is *not* a typeable `/apply` command; that name is just what the underlying logic is called internally. Clicking it opens a modal asking for your Clash Royale player tag.
 
 Submitting the modal begins tracking:
 
@@ -59,7 +59,7 @@ Submitting the modal begins tracking:
 - Starts war performance tracking for the automated weekly review
 - DMs the full two-part welcome guide (roles, Hall of Fame, tools, feedback) on success; falls back to a short DM if DMs are blocked
 - Has a 24-hour cooldown between applications
-- Always resets you to `probation`, even if you already had standing — if you're an **existing** clan member linking to KRAKEN for the first time, use the **relink** panel in `#relink` instead (below) to keep your current tier
+- Always resets you to `probation`, even if you already had standing — if you're an **existing** clan member linking to KRAKEN for the first time, use the **Link My Account** button in the same `#link-account` channel instead (below) to keep your current tier
 
 ---
 
@@ -218,11 +218,11 @@ Use this when the channel gets cluttered, after a server restructure, or to forc
 
 One-time setup command that wires up the entire Recruit HQ server.
 
-- Creates or finds all required channels: `#welcome`, `#relink` (skip with `enableRelinkChannel: false` in config for a brand-new clan with no existing roster to onboard — on by default), `#kraken-decisions` (public summary), `#kraken-decisions-leaders` (private log), `#on-a-break`, `#kraken-ops`, `#logs`, `#removal-queue` — the leaders-only channels are grouped under a "leaders" category
+- Creates or finds all required channels: `#link-account` (hosts both the Agree & Join and Link My Account panels — skip the second with `enableRelinkChannel: false` in config for a brand-new clan with no existing roster to onboard — on by default), `#kraken-decisions` (public summary), `#kraken-decisions-leaders` (private log), `#on-a-break`, `#kraken-ops`, `#logs`, `#removal-queue` — the leaders-only channels are grouped under a "leaders" category
 - Creates or finds all required roles: `probation`, `new-arrival`, `kraken-member`, `kraken-warcore`, `kraken-underwatch`, `on a break`, `remove`, `leaders`
 - Sets correct permissions on every channel (members read-only, bot can post, leaders can post)
 - Stores all channel and role IDs in SQLite (`kraken.db`) for the evaluator and other systems to use
-- Posts/pins the welcome panel in `#welcome`, the relink panel in `#relink`, and the break panel in `#on-a-break`
+- Posts/pins the welcome panel and the relink panel in `#link-account`, and the break panel in `#on-a-break`
 
 Run this once when setting up a new server. Safe to re-run — it refreshes IDs without breaking existing data.
 
@@ -295,11 +295,11 @@ Posts the **current** season's top-5 (fame, wars played, donations) to the leade
 
 These are triggered by clicking buttons in the server, not by typing a command.
 
-### Welcome panel — "Agree & Join" button (`#welcome`)
+### Welcome panel — "Agree & Join" button (`#link-account`)
 
 Opens a modal asking for your Clash Royale tag. Submitting it runs the same flow as `/apply`. This is the primary entry point for new recruits. Successfully applying also clears any waitlist entry (role + DB row) the member had. **Always resets you to `probation`** — this is for someone who has no existing standing to preserve.
 
-### Relink panel — "Link My Account" button (`#relink`)
+### Relink panel — "Link My Account" button (`#link-account`)
 
 For onboarding an **existing** clan's roster onto KRAKEN for the first time, or any member who already had standing before linking. Opens a modal for the same tag input as the welcome panel, but **preserves your current tier** instead of resetting to probation — if you already have a KRAKEN profile, it keeps your stored status; if you don't but already hold a tier role in Discord (e.g. a leader manually granted `kraken-warcore` before this existed), it reads that role and keeps it. Also preserves an active break instead of clearing it, and clears any waitlist entry. Tracks how many members have completed it against an expected total, and can DM the leader who started the rollout once everyone's done.
 
@@ -391,7 +391,8 @@ These fire on a schedule without any user action:
 | **Post-break escalation to Underwatch** | Daily, after break expiry | **Regular breaks**: escalate only after at least one *completed* war day has passed since expiry with zero war activity (so a break ending mid-training-week isn't unfairly judged, and a war day still in progress can still be played). **Server-leave grace breaks**: escalate immediately on expiry — the offense is not returning, war timing is irrelevant. |
 | **Waitlist weekly check-in / expiry** | Daily | DMs anyone 7+ days since joining/confirming who hasn't been pinged yet this cycle; removes anyone pinged 48+ hours ago with no confirmation. |
 | **New clan joiners report** | Daily (every eval tick, not just review days) | Posts a list of clan-roster members with no KRAKEN profile at all — no way to tell whether they're sitting in Recruit HQ unlinked or not on Discord at all, so it covers both. Only ever reports each tag once (persisted dedup set, not a date cutoff) — no repeats. Logged to the admin logs channel. |
-| **Welcome panel** | Bot startup + `/recruit-setup` | Ensures the `#welcome` panel exists and is pinned |
+| **Welcome panel** | Bot startup + `/recruit-setup` | Ensures the Agree & Join panel in `#link-account` exists and is pinned |
+| **Relink panel** | Bot startup + `/recruit-setup` | Ensures the Link My Account panel in `#link-account` exists and is pinned |
 | **Break panel** | Bot startup + `/recruit-setup` | Ensures the `#on-a-break` panel exists and is pinned |
 | **Appeals panel** | Bot startup + `/recruit-setup` | Ensures the `#appeals` panel exists and is pinned |
 | **Waitlist panel** | Bot startup | Ensures the `#waiting-list` panel exists and is pinned, showing the current queue size |

@@ -428,6 +428,39 @@ still match what's documented above, no drift found.
   that referenced a nonexistent `/relink` command were corrected to describe
   the real panel.
 
+- **`#welcome` and `#relink` merged into one shared `#link-account` channel
+  (2026-08-26).** Both channels always had identical visibility (readable by
+  everyone, including a `new-arrival` with zero KRAKEN roles), so having two
+  separate channels for "Agree & Join" vs. "Link My Account" read as
+  redundant to an operator seeing both listed for a brand-new clan with no
+  actual prior roster distinction to justify it. `setup.js` now creates one
+  channel (fresh clans get it named `link-account`; an existing clan's
+  already-created `#welcome` channel is resolved and reused as-is, never
+  renamed), and posts both panels into it — `relinkChannelId` is set to the
+  same ID as `welcomeChannelId` whenever `enableRelinkChannel` is on, rather
+  than pointing at a second physically separate channel. Neither panel's
+  underlying logic changed at all: `applyCore` and `relinkCore` were checked
+  directly and are NOT interchangeable (`relinkCore` never grants the
+  `probation` role, has no blacklist/cooldown check, and doesn't attempt the
+  leaders-role auto-detection `applyCore` does) — this was a channel
+  consolidation, not a logic merge, and both buttons still route to their
+  own distinct, already-tested function. An operator who explicitly sets
+  `channels.relinkChannelId` to a different real channel ID in config still
+  gets that override via `syncRecruitRuntimeFromConfig`; merging only
+  changed the default. Also fixed a real adjacent gap found while touching
+  this: `ensureRelinkPost` was previously only ever called from `index.js`'s
+  `ClientReady` handler, never from `/recruit-setup` itself — meaning running
+  `/recruit-setup` on an already-running bot (the normal case) left the Link
+  My Account panel missing until the next full process restart. `setup.js`
+  now calls it directly, same as it already did for `ensureWelcomePost`.
+  Verified offline: syntax + eslint clean, `setup.js`/`apply.js`/`index.js`
+  import cleanly, `smoke-wiring.js` at the documented 6/8 placeholder-config
+  baseline. Not yet live-tested against a real Discord guild as of this
+  writing — the next step is re-running `/recruit-setup` on `kraken-host`'s
+  throwaway `test-provision` instance (already live from validating the new
+  `provision-clan.mjs` provisioning script) to confirm the merged channel
+  actually works end to end before this note is updated to say so.
+
 ### Cosmetic-only, no behavior change
 
 - `src/recruit/policy.js`'s `'TWO_WAR_INACTIVE'` reason-code constant

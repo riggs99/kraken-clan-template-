@@ -130,10 +130,10 @@ limit).
 **7. In their Discord — same as always**
 - They run `/recruit-setup` once — creates every channel/role this bot needs
   with correct permissions, fully automatically.
-- Existing members each click **Link My Account** on the panel in `#relink`
+- Existing members each click **Link My Account** in `#link-account`
   and submit their player tag — keeps their current standing, no kicks, no
-  rejoining. New recruits use the **Agree & Join** panel in `#welcome`
-  instead, which always starts them on probation.
+  rejoining. New recruits use **Agree & Join**, in that same channel,
+  which always starts them on probation.
 
 That's the entire per-clan process, from your side. The clan owner's entire
 involvement is: give you their clan tag, invite the bot, run `/recruit-setup`

@@ -493,9 +493,9 @@ function buildRelinkPanelContainer() {
     header: '## 🐙 KRAKEN — Already in the Clan?',
     blocks: [
       [
-        'If you\'re already a member of this clan and this is your first time linking to KRAKEN, use this instead of the welcome panel — this keeps your current standing instead of starting you over on probation.',
+        'If you\'re already a member of this clan and this is your first time linking to KRAKEN, use this button instead of Agree & Join above — this keeps your current standing instead of starting you over on probation.',
         '',
-        'New to the clan? Use **#welcome** instead.',
+        'New to the clan? Use **Agree & Join** above instead.',
       ].join('\n'),
     ],
   });
