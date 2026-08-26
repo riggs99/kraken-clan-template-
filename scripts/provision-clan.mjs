@@ -157,6 +157,15 @@ function pm2Logs(name, lines = 30) {
 function readLine({ mask = false } = {}) {
   return new Promise(resolve => {
     let input = '';
+    // When non-null, we're mid-way through consuming an ANSI escape sequence
+    // (e.g. a pasted value wrapped in bracketed-paste markers, or an arrow
+    // key) — confirmed live that pasting into this prompt can inject these
+    // bytes straight into `input`, corrupting an otherwise-valid value in a
+    // way that isn't visible when just reading the echoed text back. Every
+    // escape sequence is swallowed silently rather than added to input or
+    // echoed; this tool has no need for cursor movement or history, so
+    // there's nothing lost by discarding all of them, not just paste markers.
+    let escBuf = null;
     const stdin = process.stdin;
     const wasRaw = Boolean(stdin.isRaw);
     stdin.setRawMode(true);
@@ -171,6 +180,19 @@ function readLine({ mask = false } = {}) {
 
     const onData = (buf) => {
       for (const ch of buf) {
+        if (escBuf !== null) {
+          escBuf += ch;
+          // CSI sequences terminate on a byte in the 0x40-0x7e range once
+          // past the initial ESC prefix; bail out after that or if it runs long.
+          if ((escBuf.length >= 3 && /[\x40-\x7e]/.test(ch)) || escBuf.length > 16) {
+            escBuf = null;
+          }
+          continue;
+        }
+        if (ch === '') { // ESC — start of an escape/bracketed-paste sequence
+          escBuf = ch;
+          continue;
+        }
         if (ch === '\r' || ch === '\n') {
           cleanup();
           process.stdout.write('\n');
