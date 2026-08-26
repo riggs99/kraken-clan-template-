@@ -624,7 +624,10 @@ async function finalConfirmation(slug, targetDir, collected, availableMb) {
   log('=========================');
   log('This starts a LIVE, Discord-connected, pm2-supervised process now.');
   const typed = await ask(`Type the clan slug ("${slug}") to confirm and go live, or Ctrl+C to abort: `);
-  if (typed.trim() !== slug) fail('Slug did not match — aborted.');
+  if (typed.trim() !== slug) {
+    log(`  [DEBUG] typed=${JSON.stringify(typed)} (length ${typed.length}) expected=${JSON.stringify(slug)} (length ${slug.length})`);
+    fail('Slug did not match — aborted.');
+  }
 }
 
 function sleep(ms) {
