@@ -112,6 +112,35 @@ Edit **`config/ops.config.json`**:
 The bot refuses to start while any `PUT_*` placeholder remains — that's a guard,
 not a bug.
 
+**Worth knowing before your first `/recruit-setup` run:** every Discord server
+comes with its own default `#general` channel, created automatically, visible to
+everyone — `/recruit-setup` never touches it (it never guesses which channel to
+lock down by name, see [Role hierarchy](#role-hierarchy) below for why). Left
+alone, that means an unverified new-arrival can already chat in the default
+`#general` before ever applying, bypassing the whole point of `#link-account`
+being the only thing they're supposed to see. Fix this by pointing KRAKEN at
+your existing default channel instead of letting it create a second one: copy
+that channel's ID and set `channels.memberChatChannelId` to it in
+`recruit.config.json`. `/recruit-setup` will then adopt and lock it down
+(members + leaders only) instead of creating a separate `#general`-named
+channel next to it.
+
+**Timing matters if this is an already-active server, not a fresh one.**
+Locking the real chat channel down immediately would cut off every existing
+member who hasn't relinked yet from a channel they were already using —
+before they've had the chance to. On a genuinely fresh server with nobody in
+it yet, do this immediately. On an existing clan's server, leave this unset
+at first (KRAKEN's own separate channel is a safe placeholder), and only set
+`memberChatChannelId` and re-run `/recruit-setup` once most of the roster has
+already relinked. The same logic applies to `channels.leadersChatChannelId`
+if adopting an existing leaders/officers chat channel. Skip this entirely and
+KRAKEN creates its own gated channel regardless — the original default
+`#general` just stays open until you do.
+
+*(A planned first-boot wizard will eventually turn this into an in-Discord
+picker instead of manual config editing — see
+[docs/first-boot-wizard-plan.md](docs/first-boot-wizard-plan.md).)*
+
 ---
 
 ## Step 5 — Verify before you start
@@ -156,6 +185,10 @@ For 24/7 operation under a process manager, see
 
 In the server, as the **owner or an admin**, run `/recruit-setup` once. It
 builds the entire Recruit HQ automatically:
+
+*(Planned, not yet built: a first-boot DM wizard that walks the owner through
+this automatically instead of requiring them to know this command exists —
+see [docs/first-boot-wizard-plan.md](docs/first-boot-wizard-plan.md).)*
 
 **Channels**
 - `#link-account` — the only channel visible to everyone, including a
