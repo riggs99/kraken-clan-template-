@@ -531,6 +531,73 @@ still match what's documented above, no drift found.
   (would need `test-provision`'s stored setup state cleared and a restart)
   — that real functional pass is the next step, not assumed done here.
 
+- **Member-chat channel retired; celebrations/weekly summary merged into
+  `#kraken-decisions` via two standing threads (2026-08-27).** Live-testing
+  the wizard's actual DM (previous entry above) surfaced that its
+  chat-channel-adoption warning described a genuine dealbreaker, not just a
+  risk worth flagging: adopting a clan's real, already-active chat channel
+  locks every current member out of it *immediately* (nobody holds
+  `kraken-member` yet at the moment setup completes — relinking is only
+  possible after this same run finishes). Investigating whether KRAKEN
+  actually needed a dedicated member-chat channel at all found that it
+  didn't — grepping every use of `memberChatChannelId`
+  (`src/recruit/evaluator.js`, `src/schedule.js`) showed it was only ever a
+  place for the bot to *post into* (perfect-war honors, warcore-promotion
+  announcements, clan hall-of-fame records, a weekly member summary), never
+  something requiring restricted visibility. `#kraken-decisions`
+  (`publicDecisionsChannelId`) is always a channel KRAKEN creates and owns
+  itself — never adopted from an existing server — so merging this content
+  into it removes the lockout risk structurally instead of just re-wording
+  the warning around it.
+
+  Doing that naively would have just relocated the "wall of messages"
+  problem into `#kraken-decisions`, so the merged content was organized into
+  two new standing Discord threads instead of one continuous feed:
+  **Celebrations & Records** and **Weekly Summary**, created under
+  `#kraken-decisions` by `setup.js`'s new `findOrCreateThreadById` (same
+  configured-ID → stored-ID → create-fresh, no-name-matching principle as
+  every channel/role in that file). `memberChatChannelId` is retired
+  outright — `setup.js` actively clears any previously-stored value on every
+  run (same pattern already used for disabling `channels.relinkChannelId`),
+  but never touches or deletes the actual Discord channel itself. Decision-
+  verdict posts stay in the parent channel exactly where they were — only
+  the *new* content being merged in got bucketed into threads.
+
+  While in there, also restyled every post in this surface — decision
+  verdicts, celebrations, and the weekly summary — using
+  `buildDashboardContainer` (`src/dashboard-components.js`), the Components
+  V2 helper already used by 18+ other surfaces in this codebase (`/ops`,
+  `/war-board`, season reports, appeal/relink panels). `evaluator.js`'s
+  `postCelebration` and `buildRichMemberEmbed` (renamed
+  `buildRichMemberContainer`) were raw `EmbedBuilder`s predating this house
+  style — migrated to match, including moving the celebration ping out of
+  the (Components-V2-incompatible) top-level `content` field and into the
+  first content block instead, with `allowedMentions` still explicitly
+  allow-listing it so it keeps actually notifying. `buildRichMemberContainer`
+  is shared by both the public decisions channel and the leaders-only admin
+  logs channel — restyling it changed both surfaces, deliberately, for
+  consistency. `schedule.js`'s weekly summary already used
+  `buildDashboardContainer` — that one was a pure repoint (`memberChatChannelId`
+  → `weeklySummaryThreadId`), no styling work needed. The wizard's DM lost
+  its entire first dropdown and warning as a direct result — it now asks
+  only 2 questions (leaders chat, leaders role) instead of 3, and ships with
+  no chat-channel warning at all, since there's nothing left to adopt.
+
+  Verified: syntax + eslint clean across every changed file (`setup.js`,
+  `db.js`, `evaluator.js`, `schedule.js`, `wizard.js`, `welcome-guide.js`),
+  a direct module-import test of every changed file confirming clean loads
+  with the expected exports (skipped the full `index.js`/live-Discord-login
+  path this time — not needed to prove the module graph itself is sound),
+  and `smoke-wiring.js` extended with one new check confirming the wizard's
+  chat-channel customId/staging key are actually gone — 10/12 passing, same
+  2 intentional `PUT_*`-placeholder failures as the documented baseline.
+  Config files were reverted to placeholders immediately after the import
+  test, confirmed via `git status`. Not yet live-tested against a real
+  Discord guild — the next step is resetting `test-provision`'s stored setup
+  state and confirming the two new threads actually get created, and that
+  `/recruit-eval-now` plus a manually-triggered weekly-summary/celebration
+  post render correctly in their new locations with the new look.
+
 ### Cosmetic-only, no behavior change
 
 - `src/recruit/policy.js`'s `'TWO_WAR_INACTIVE'` reason-code constant

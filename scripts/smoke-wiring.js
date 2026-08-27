@@ -95,6 +95,12 @@ await runCheck('Main index dispatches wizard: interactions before the ops/war ga
   assert(wizardIdx < opsWarGateIdx, 'wizard: dispatch must come before the ops/war gate, or a wizard button falls into it and misfires the "kraken role required" reply on a DM interaction');
 });
 
+await runCheck('Wizard no longer offers a chat-channel adoption dropdown', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/recruit/wizard.js'), 'utf8');
+  assert(!source.includes('wizard:pick:chatChannel'), 'chat-channel pick customId should have been removed');
+  assert(!source.includes('PENDING_KEYS.chatChannel'), 'chat-channel staging key should have been removed');
+});
+
 const failed = checks.filter(check => !check.ok);
 for (const check of checks) {
   if (check.ok) {

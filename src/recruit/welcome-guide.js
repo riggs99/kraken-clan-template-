@@ -84,7 +84,7 @@ export function buildWelcomeGuideEmbeds(runtime, recruitConfig = null) {
         value: [
           '**One name per record.** The clan\'s ledger — not your private stats.',
           '',
-          'Each record needs a **minimum bar** before it counts. When someone sets a record for the first time, or beats the current holder, KRAKEN posts a celebration in member chat. **Nothing repeats unless the record actually moves.**',
+          'Each record needs a **minimum bar** before it counts. When someone sets a record for the first time, or beats the current holder, KRAKEN posts a celebration in the Celebrations & Records thread (under #kraken-decisions). **Nothing repeats unless the record actually moves.**',
           '',
           '💝 **Top Donor** — longest run as #1 clan donor *(min. 4 consecutive war weeks)*',
           '⚔️ **War Champion** — longest run as #1 war performer *(min. 4 consecutive war weeks)*',

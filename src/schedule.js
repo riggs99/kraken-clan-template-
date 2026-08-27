@@ -384,15 +384,15 @@ function buildMemberWeeklySummaryBlocks(hl) {
 async function sendMemberWeeklySummary(client, clan, history, members, expectedDecksPerDay) {
   try {
     const runtime = getRecruitRuntimeIds(initDb());
-    const memberChatChannelId = String(runtime?.channels?.memberChatChannelId ?? '');
-    if (!isLikelyDiscordId(memberChatChannelId)) {
-      console.log('[SCHEDULE] Member weekly summary skipped: memberChatChannelId not configured');
+    const weeklySummaryThreadId = String(runtime?.channels?.weeklySummaryThreadId ?? '');
+    if (!isLikelyDiscordId(weeklySummaryThreadId)) {
+      console.log('[SCHEDULE] Member weekly summary skipped: weeklySummaryThreadId not configured');
       return;
     }
-    const channel = await client.channels.fetch(memberChatChannelId);
+    const channel = await client.channels.fetch(weeklySummaryThreadId);
     const permCheck = checkCanSendEmbeds(client, channel);
     if (!permCheck.ok) {
-      console.error(`[SCHEDULE] Member weekly summary skipped: ${memberChatChannelId}: ${permCheck.message}`);
+      console.error(`[SCHEDULE] Member weekly summary skipped: ${weeklySummaryThreadId}: ${permCheck.message}`);
       return;
     }
 
@@ -417,7 +417,7 @@ async function sendMemberWeeklySummary(client, clan, history, members, expectedD
 
 /**
  * Send weekly clan summary with promotion/demotion recommendations to the leader
- * channel, plus a sanitized member-facing highlights post to general chat.
+ * channel, plus a sanitized member-facing highlights post to the weekly-summary thread.
  */
 export async function sendWeeklyReport(client) {
   const resolved = await resolveReportsChannel(client);
@@ -565,7 +565,7 @@ export async function sendWeeklyReport(client) {
   }
 
   // Public member-facing summary — separate try/catch so a failure here (e.g.
-  // memberChatChannelId misconfigured) can't take down the leader report above,
+  // weeklySummaryThreadId misconfigured) can't take down the leader report above,
   // and vice versa. Reuses the same fetch/snapshot/filter so both posts describe
   // the exact same data, not two slightly different API reads moments apart.
   if (sharedData) {

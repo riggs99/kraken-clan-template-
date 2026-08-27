@@ -1,4 +1,4 @@
-import { PermissionFlagsBits, ChannelType, MessageFlags } from 'discord.js';
+import { PermissionFlagsBits, ChannelType, ThreadAutoArchiveDuration, MessageFlags } from 'discord.js';
 import { getRecruitRuntimeIds, setRecruitSetting } from '../db.js';
 import { ensureWelcomePost } from '../onboarding.js';
 import { ensureRelinkPost } from './apply.js';
@@ -195,6 +195,30 @@ async function findOrCreateManagedChannel(guild, { configuredId, storedId, creat
 
   await applyOverwrites(channel, overwrites, enforceReason);
   return channel;
+}
+
+// Same "stored ID or create fresh, never a name match" principle as
+// findOrCreateTextChannelById above, applied to threads. fetch() by ID resolves an
+// archived thread just as well as an active one — no separate archived-thread list
+// fetch needed.
+async function resolveThreadById(parentChannel, threadId) {
+  const id = String(threadId ?? '');
+  if (!isValidDiscordId(id)) return null;
+  try {
+    return (await parentChannel.threads.fetch(id)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function findOrCreateThreadById(parentChannel, storedId, name) {
+  const byId = await resolveThreadById(parentChannel, storedId);
+  if (byId) return byId;
+  return parentChannel.threads.create({
+    name,
+    autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
+    reason: 'KRAKEN Recruit setup',
+  });
 }
 
 // Guards against overlapping setup runs — e.g. two co-leaders both trying to help at once, a
@@ -455,30 +479,34 @@ export async function runRecruitSetupCore(guild, { db, recruitConfig, client }) 
   setRecruitSetting(db, 'channels.onBreakChannelId', onBreakChannel.id);
   setRecruitSetting(db, 'channels.removalQueueChannelId', removalQueueChannel.id);
 
-  // Member chat channel (baseline clan member chat). Created if missing — not left for a
-  // leader to set up by hand — so a brand-new clan gets a fully working server immediately.
-  // Gate to actual members only — kraken-member is granted the moment /apply succeeds,
-  // regardless of tier, so this excludes new-arrival/waitlist without excluding anyone
-  // who's actually onboarded.
-  const memberOnlyOverwrites = [
-    { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
-    { id: botId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
-    { id: roleMember.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-    { id: roleLeaders.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-  ];
-  const memberChatChannel = await findOrCreateManagedChannel(guild, {
-    configuredId: recruitConfig?.channels?.memberChatChannelId,
-    storedId: existing?.channels?.memberChatChannelId,
-    createName: 'general',
-    overwrites: memberOnlyOverwrites,
-    enforceReason: 'KRAKEN Recruit setup: enforce member-chat permissions',
-  });
-  setRecruitSetting(db, 'channels.memberChatChannelId', memberChatChannel.id);
+  // Retired: KRAKEN no longer creates/adopts a dedicated member-chat channel. Grepping every
+  // caller of memberChatChannelId showed it was only ever a place for the bot to post into
+  // (celebrations, weekly summaries) — never something that needed its own restricted
+  // visibility. Merged into #kraken-decisions instead (the two threads below), which fixes a
+  // real problem the old design had: adopting an existing chat channel locked every current
+  // member out of it immediately (nobody holds kraken-member yet at the moment setup
+  // completes), whereas #kraken-decisions is always KRAKEN's own channel, never adopted from
+  // an existing server.
+  //
+  // Actively clear the old setting, not just stop writing it — a clan that ran an earlier
+  // version has a real stored ID from that run. Same reasoning as the relink-disable clear
+  // above: the actual Discord channel is never touched/deleted, this only stops KRAKEN from
+  // reading a now-meaningless ID going forward.
+  db.prepare("DELETE FROM recruit_settings WHERE key = 'channels.memberChatChannelId'").run();
+
+  // Two standing threads under #kraken-decisions bucket the content that used to go to member
+  // chat, so it doesn't interleave with (and clutter) the decisions feed above them. No
+  // name-matching — same configured/stored-ID-or-create-fresh principle as every channel/role
+  // above.
+  const celebrationsThread = await findOrCreateThreadById(publicDecisionsChannel, existing?.channels?.celebrationsThreadId, 'celebrations-and-records');
+  setRecruitSetting(db, 'channels.celebrationsThreadId', celebrationsThread.id);
+  const weeklySummaryThread = await findOrCreateThreadById(publicDecisionsChannel, existing?.channels?.weeklySummaryThreadId, 'weekly-summary');
+  setRecruitSetting(db, 'channels.weeklySummaryThreadId', weeklySummaryThread.id);
 
   // Leaders-only chat channel — distinct from the leaders category above, which is all
   // bot-managed data/log surfaces (#kraken-decisions-leaders, #kraken-ops, #logs,
-  // #removal-queue), not somewhere leaders would actually sit and talk. Also created if
-  // missing, same reasoning as member chat above.
+  // #removal-queue), not somewhere leaders would actually sit and talk. Created if missing
+  // (or adopted by ID), same configured/stored-ID-or-create-fresh pattern as everything else.
   const leadersChatChannel = await findOrCreateManagedChannel(guild, {
     configuredId: recruitConfig?.channels?.leadersChatChannelId,
     storedId: existing?.channels?.leadersChatChannelId,
@@ -613,7 +641,8 @@ export async function runRecruitSetupCore(guild, { db, recruitConfig, client }) 
       opsChannelId: opsChannel.id,
       logsChannelId: logsChannel.id,
       removalQueueChannelId: removalQueueChannel.id,
-      memberChatChannelId: memberChatChannel.id,
+      celebrationsThreadId: celebrationsThread.id,
+      weeklySummaryThreadId: weeklySummaryThread.id,
       leadersChatChannelId: leadersChatChannel.id,
       waitingListChannelId: waitingListChannel.id,
       appealsChannelId: appealsChannel.id,
@@ -662,7 +691,8 @@ export function formatSetupCompletionMessage(result) {
     `- kraken-ops: <#${channels.opsChannelId}>`,
     `- logs: <#${channels.logsChannelId}>`,
     `- removal-queue: <#${channels.removalQueueChannelId}>`,
-    `- member chat: <#${channels.memberChatChannelId}>`,
+    `- celebrations & records (thread under kraken-decisions): <#${channels.celebrationsThreadId}>`,
+    `- weekly summary (thread under kraken-decisions): <#${channels.weeklySummaryThreadId}>`,
     `- leaders chat: <#${channels.leadersChatChannelId}>`,
     `- waiting-list: <#${channels.waitingListChannelId}>`,
     `- appeals: <#${channels.appealsChannelId}>`,

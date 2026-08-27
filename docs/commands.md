@@ -218,7 +218,7 @@ Use this when the channel gets cluttered, after a server restructure, or to forc
 
 One-time setup command that wires up the entire Recruit HQ server.
 
-- Creates or finds all required channels: `#link-account` (hosts both the Agree & Join and Link My Account panels — skip the second with `enableRelinkChannel: false` in config for a brand-new clan with no existing roster to onboard — on by default), `#kraken-decisions` (public summary), `#kraken-decisions-leaders` (private log), `#on-a-break`, `#kraken-ops`, `#logs`, `#removal-queue` — the leaders-only channels are grouped under a "leaders" category
+- Creates or finds all required channels: `#link-account` (hosts both the Agree & Join and Link My Account panels — skip the second with `enableRelinkChannel: false` in config for a brand-new clan with no existing roster to onboard — on by default), `#kraken-decisions` (public summary, with two standing threads underneath it — Celebrations & Records, Weekly Summary), `#kraken-decisions-leaders` (private log), `#on-a-break`, `#kraken-ops`, `#logs`, `#removal-queue` — the leaders-only channels are grouped under a "leaders" category
 - Creates or finds all required roles: `probation`, `new-arrival`, `kraken-member`, `kraken-warcore`, `kraken-underwatch`, `on a break`, `remove`, `leaders`
 - Sets correct permissions on every channel (members read-only, bot can post, leaders can post)
 - Stores all channel and role IDs in SQLite (`kraken.db`) for the evaluator and other systems to use
@@ -354,7 +354,7 @@ Separate from the server-leave grace break above. Controlled by `GRACE_DAYS` in 
 
 ## Clan Hall of Fame (automated)
 
-Three shared clan records, one holder each, announced in member chat **only when a record moves** (min. 4 consecutive war weeks):
+Three shared clan records, one holder each, announced in the Celebrations & Records thread (under `#kraken-decisions`) **only when a record moves** (min. 4 consecutive war weeks):
 
 | Record | Metric |
 |---|---|
@@ -362,7 +362,7 @@ Three shared clan records, one holder each, announced in member chat **only when
 | War Champion | Longest run as #1 war performer |
 | Iron Attendance | Longest run with zero war days missed |
 
-When a holder leaves the clan, the record reverts to the most recent prior holder still in clan, or clears until someone sets it again. Reverts are logged to the admin logs channel (not posted to member chat).
+When a holder leaves the clan, the record reverts to the most recent prior holder still in clan, or clears until someone sets it again. Reverts are logged to the admin logs channel (not posted to the Celebrations & Records thread).
 
 ---
 

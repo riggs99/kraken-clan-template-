@@ -16,11 +16,8 @@ function isValidDiscordId(id) {
 // isRecruitOpsAuthorized/isLeaderOrAdmin — pre-seeding it the instant someone merely picks a
 // role (before any permission enforcement has run) would instantly grant ops/recruit-leader
 // command access to anyone already holding that role, mid-wizard, before the owner confirms
-// anything. The chat-channel pick doesn't carry that specific risk (channel IDs aren't read
-// for permission checks anywhere), but it goes through the same staging pattern regardless,
-// for one consistent rule: nothing is real until Confirm, full stop, no exceptions.
+// anything.
 const PENDING_KEYS = {
-  chatChannel: 'wizard.pendingChatChannelId',
   leadersChat: 'wizard.pendingLeadersChatChannelId',
   leadersRole: 'wizard.pendingLeadersRoleId',
 };
@@ -30,14 +27,10 @@ const WARNING_TEXT = [
   '',
   'Before I can do that, I need to set up some channels and roles in this server. I can create everything brand new, or — if you already have some of these — I can use what you\'ve got instead. For anything you leave blank below, I\'ll just create a fresh one automatically. **Not sure? Leaving everything blank is the safe default.**',
   '',
-  '**1️⃣ Your clan\'s general chat channel** (first dropdown below)',
-  'If you already have one everyone uses, pick it here.',
-  '⚠️ Doing this makes that channel members-only *immediately* — everyone currently in it loses access until they verify/relink their account in a channel I\'ll create for that. If you\'re not ready for that yet, leave this blank — I\'ll make a separate KRAKEN-only chat instead, and you can switch everyone over to your real one later.',
-  '',
-  '**2️⃣ Your leaders/officers chat channel** (second dropdown below)',
+  '**1️⃣ Your leaders/officers chat channel** (first dropdown below)',
   'If you already have a private channel for your leadership team, pick it here. Leave it blank and I\'ll create a new private one.',
   '',
-  '**3️⃣ Your leaders/officers role** (third dropdown below)',
+  '**2️⃣ Your leaders/officers role** (second dropdown below)',
   'If your leadership team already has a Discord role, pick it here.',
   '⚠️ I control access channel-by-channel, not through role permissions — if this role currently has server-wide permissions like Kick Members or Manage Messages, those will be removed when I take it over.',
   '',
@@ -48,7 +41,6 @@ const WARNING_TEXT = [
 
 function readStaged(db) {
   return {
-    chatChannelId: getRecruitSetting(db, PENDING_KEYS.chatChannel) || null,
     leadersChatChannelId: getRecruitSetting(db, PENDING_KEYS.leadersChat) || null,
     leadersRoleId: getRecruitSetting(db, PENDING_KEYS.leadersRole) || null,
   };
@@ -61,39 +53,30 @@ function clearStaged(db) {
 }
 
 // Only called from the Confirm path, never Start Fresh — promotes whatever was staged into
-// the real settings the existing setup logic already reads (channels.memberChatChannelId,
-// channels.leadersChatChannelId, roles.leadersRoleId), immediately before running setup. No
-// changes needed to that logic at all: it already resolves configured ID -> stored ID ->
-// create fresh, and a value written here just becomes today's "stored ID".
+// the real settings the existing setup logic already reads (channels.leadersChatChannelId,
+// roles.leadersRoleId), immediately before running setup. No changes needed to that logic at
+// all: it already resolves configured ID -> stored ID -> create fresh, and a value written
+// here just becomes today's "stored ID".
 function promoteStaged(db) {
   const staged = readStaged(db);
-  if (isValidDiscordId(staged.chatChannelId)) setRecruitSetting(db, 'channels.memberChatChannelId', staged.chatChannelId);
   if (isValidDiscordId(staged.leadersChatChannelId)) setRecruitSetting(db, 'channels.leadersChatChannelId', staged.leadersChatChannelId);
   if (isValidDiscordId(staged.leadersRoleId)) setRecruitSetting(db, 'roles.leadersRoleId', staged.leadersRoleId);
 }
 
 function buildWizardComponents(staged = {}) {
-  const chatChannelSelect = new ChannelSelectMenuBuilder()
-    .setCustomId('wizard:pick:chatChannel')
-    .setChannelTypes(ChannelType.GuildText)
-    .setMinValues(0)
-    .setMaxValues(1)
-    .setPlaceholder('1️⃣ Your existing general chat? (optional)');
-  if (isValidDiscordId(staged.chatChannelId)) chatChannelSelect.setDefaultChannels(staged.chatChannelId);
-
   const leadersChatSelect = new ChannelSelectMenuBuilder()
     .setCustomId('wizard:pick:leadersChat')
     .setChannelTypes(ChannelType.GuildText)
     .setMinValues(0)
     .setMaxValues(1)
-    .setPlaceholder('2️⃣ Your existing leaders chat? (optional)');
+    .setPlaceholder('1️⃣ Your existing leaders chat? (optional)');
   if (isValidDiscordId(staged.leadersChatChannelId)) leadersChatSelect.setDefaultChannels(staged.leadersChatChannelId);
 
   const leadersRoleSelect = new RoleSelectMenuBuilder()
     .setCustomId('wizard:pick:leadersRole')
     .setMinValues(0)
     .setMaxValues(1)
-    .setPlaceholder('3️⃣ Your existing leaders role? (optional)');
+    .setPlaceholder('2️⃣ Your existing leaders role? (optional)');
   if (isValidDiscordId(staged.leadersRoleId)) leadersRoleSelect.setDefaultRoles(staged.leadersRoleId);
 
   const buttonRow = new ActionRowBuilder().addComponents(
@@ -102,7 +85,6 @@ function buildWizardComponents(staged = {}) {
   );
 
   return [
-    new ActionRowBuilder().addComponents(chatChannelSelect),
     new ActionRowBuilder().addComponents(leadersChatSelect),
     new ActionRowBuilder().addComponents(leadersRoleSelect),
     buttonRow,
@@ -150,7 +132,7 @@ export async function handleWizardInteraction(interaction, { recruitConfig, db, 
   const customId = String(interaction.customId ?? '');
   if (!customId.startsWith('wizard:')) return false;
 
-  const pickMatch = customId.match(/^wizard:pick:(chatChannel|leadersChat|leadersRole)$/);
+  const pickMatch = customId.match(/^wizard:pick:(leadersChat|leadersRole)$/);
   if (pickMatch) {
     const which = pickMatch[1];
     const pickedId = interaction.values?.[0] ?? null;

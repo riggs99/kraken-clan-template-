@@ -4,7 +4,8 @@ import { buildMemberIntel, liveClanTagSet } from '../war-intel.js';
 import { upsertTodaySnapshot, mergeMembersIntoDay, loadHistory, getLastNDays, seriesForTag } from '../history.js';
 import { computeHistoryWeightedRisk } from '../risk-score.js';
 import { cleanTag, normalizePlayerTag, todayKeyISO } from '../util.js';
-import { EmbedBuilder } from 'discord.js';
+import { EmbedBuilder, MessageFlags } from 'discord.js';
+import { buildDashboardContainer, CLAN_BADGE_URL, STATUS_COLORS } from '../dashboard-components.js';
 import {
   getWarDayDecision,
   isWarActivityPresent,
@@ -153,17 +154,28 @@ async function postCelebration(client, channelId, { content, title, description,
     return null;
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setColor(color)
-    .setDescription(description)
-    .setTimestamp();
-  if (fields.length) embed.addFields(...fields);
-  if (footer) embed.setFooter({ text: footer });
+  // Components V2 (see src/dashboard-components.js, the house style used everywhere else in
+  // this codebase) can't carry a top-level `content` field, so the ping — the whole point of
+  // this sender's explicit mention allowlist — moves into the first content block instead.
+  // Mentions still notify from inside a TextDisplay exactly as they do from `content`, as long
+  // as allowedMentions explicitly allows them (kept below, unchanged).
+  const blocks = [];
+  if (content) blocks.push(content);
+  blocks.push(description);
+  for (const field of fields) blocks.push(`**${field.name}**\n${field.value}`);
+  const footerLine = [footer, `<t:${Math.floor(Date.now() / 1000)}:f>`].filter(Boolean).join(' · ');
+  blocks.push(`-# ${footerLine}`);
+
+  const container = buildDashboardContainer({
+    accentColor: color,
+    thumbnailUrl: CLAN_BADGE_URL,
+    header: `## ${title}`,
+    blocks,
+  });
 
   return ch.send({
-    content,
-    embeds: [embed],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
     allowedMentions: {
       roles: isValidDiscordId(roleId) ? [roleId] : [],
       users: isValidDiscordId(discordId) ? [discordId] : [],
@@ -285,7 +297,7 @@ async function tryAnnounceClanRecord({
   client,
   db,
   history,
-  memberChatChannelId,
+  celebrationsThreadId,
   memberRoleId,
   recordType,
   settingKey,
@@ -307,7 +319,7 @@ async function tryAnnounceClanRecord({
     return line;
   });
 
-  const sent = await postCelebration(client, memberChatChannelId, {
+  const sent = await postCelebration(client, celebrationsThreadId, {
     content: clanRecordPingContent({ record: { ...record, name: recordDisplayName }, memberRoleId }),
     title: lines[0],
     description: lines.slice(1).join('\n'),
@@ -324,14 +336,14 @@ async function tryAnnounceClanRecord({
 
 // CLAN HALL OF FAME — one holder per record (donor, war champion, iron attendance).
 // Reconcile first when a holder leaves: revert to the most recent prior holder
-// still in clan, or clear until someone sets it again. Celebrate in member chat
-// only when the record actually moves — no weekly leaderboard fallback.
+// still in clan, or clear until someone sets it again. Celebrate in the
+// celebrations thread only when the record actually moves — no weekly leaderboard fallback.
 async function announceClanHallOfFameRecords({
   client,
   db,
   history,
   results,
-  memberChatChannelId,
+  celebrationsThreadId,
   memberRoleId,
   logsChannelId,
   expectedDecksPerDay,
@@ -354,7 +366,7 @@ async function announceClanHallOfFameRecords({
     client,
     db,
     history,
-    memberChatChannelId,
+    celebrationsThreadId,
     memberRoleId,
     recordType: 'donor',
     settingKey: CLAN_RECORD_KEYS.donor,
@@ -364,7 +376,7 @@ async function announceClanHallOfFameRecords({
     client,
     db,
     history,
-    memberChatChannelId,
+    celebrationsThreadId,
     memberRoleId,
     recordType: 'war',
     settingKey: CLAN_RECORD_KEYS.war,
@@ -374,7 +386,7 @@ async function announceClanHallOfFameRecords({
     client,
     db,
     history,
-    memberChatChannelId,
+    celebrationsThreadId,
     memberRoleId,
     recordType: 'attendance',
     settingKey: CLAN_RECORD_KEYS.attendance,
@@ -449,7 +461,7 @@ function buildTierChangeDm({ before, after, reasons = [], sum7, sum14, name }) {
   return lines.join('\n');
 }
 
-function buildRichMemberEmbed(change) {
+function buildRichMemberContainer(change) {
   const who = displayMember(change);
   const before = String(change.before ?? '');
   const after = String(change.after ?? '');
@@ -484,26 +496,24 @@ function buildRichMemberEmbed(change) {
     recoveryText = null;
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle(safeTruncate(`${prefix} ${who} — ${before} → ${after}`, 256))
-    .setColor(color)
-    .setDescription(description);
+  const blocks = [description];
 
   if (statSum && num(statSum.expectedDecks) > 0) {
     const forbiddenDetail = describeForbiddenActions(statSum);
     const forbidden = forbiddenDetail ? ` · ⛔ ${forbiddenDetail}` : '';
-    embed.addFields({
-      name: 'Performance',
-      value: `${num(statSum.usedDecks)}/${num(statSum.expectedDecks)} decks · ${num(statSum.missedWarDays)} missed war day${num(statSum.missedWarDays) !== 1 ? 's' : ''}${forbidden}`,
-      inline: false,
-    });
+    blocks.push(`**Performance**\n${num(statSum.usedDecks)}/${num(statSum.expectedDecks)} decks · ${num(statSum.missedWarDays)} missed war day${num(statSum.missedWarDays) !== 1 ? 's' : ''}${forbidden}`);
   }
 
   const reasonText = reasons.map(explainReason).filter(Boolean).slice(0, 3).join('\n');
-  if (reasonText) embed.addFields({ name: 'Reason', value: safeTruncate(reasonText, 512), inline: false });
-  if (recoveryText) embed.addFields({ name: 'What to do', value: recoveryText, inline: false });
+  if (reasonText) blocks.push(`**Reason**\n${safeTruncate(reasonText, 512)}`);
+  if (recoveryText) blocks.push(`**What to do**\n${recoveryText}`);
 
-  return embed;
+  return buildDashboardContainer({
+    accentColor: color,
+    thumbnailUrl: CLAN_BADGE_URL,
+    header: `## ${prefix} ${safeTruncate(`${who} — ${before} → ${after}`, 250)}`,
+    blocks,
+  });
 }
 
 async function managePublicDecisionsHistory(client, channelId, db, newIds) {
@@ -1954,9 +1964,9 @@ export async function runRecruitDailyEvaluation(client, recruitConfig, db, optio
       ],
     });
     // Permanent per-member rich record in admin logs — never deleted, full context for future reference
-    const adminEmbeds = roleChanges.map(buildRichMemberEmbed);
-    for (const group of chunk(adminEmbeds, 10)) {
-      await safeSend(client, logsChannelId, { embeds: group });
+    const adminContainers = roleChanges.map(buildRichMemberContainer);
+    for (const group of chunk(adminContainers, 10)) {
+      await safeSend(client, logsChannelId, { components: group, flags: MessageFlags.IsComponentsV2 });
     }
   }
 
@@ -1966,24 +1976,26 @@ export async function runRecruitDailyEvaluation(client, recruitConfig, db, optio
   if (!manualSafe && isValidDiscordId(publicDecisionsChannelId)) {
     const newMessageIds = [];
 
-    // Summary header embed
-    const summaryEmbed = new EmbedBuilder()
-      .setTitle(`🐙 KRAKEN Weekly Decisions — ${day}`)
-      .setColor(roleChanges.length === 0 ? 0x57f287 : 0x5865f2)
-      .setDescription(
-        `Judged: **${results.length}** • Role changes: **${roleChanges.length}** • On break: **${onBreak.length}**\n\n` +
-        (roleChanges.length === 0
+    // Summary header
+    const summaryContainer = buildDashboardContainer({
+      accentColor: roleChanges.length === 0 ? STATUS_COLORS.healthy : STATUS_COLORS.neutral,
+      thumbnailUrl: CLAN_BADGE_URL,
+      header: `## 🐙 KRAKEN Weekly Decisions — ${day}`,
+      blocks: [
+        `Judged: **${results.length}** • Role changes: **${roleChanges.length}** • On break: **${onBreak.length}**`,
+        roleChanges.length === 0
           ? '_No tier changes this week. All tracked members are within performance thresholds._\n\n_See the pinned message above for tier rules and promotion requirements._'
-          : '_Individual decisions are shown below. See the pinned message above for tier rules._')
-      );
-    const summaryMsg = await safeSendTracked(client, publicDecisionsChannelId, { embeds: [summaryEmbed] });
+          : '_Individual decisions are shown below. See the pinned message above for tier rules._',
+      ],
+    });
+    const summaryMsg = await safeSendTracked(client, publicDecisionsChannelId, { components: [summaryContainer], flags: MessageFlags.IsComponentsV2 });
     if (summaryMsg?.id) newMessageIds.push(summaryMsg.id);
 
-    // Rich per-member embed for every role change — full context, reason, what to do next
+    // Rich per-member container for every role change — full context, reason, what to do next
     if (roleChanges.length > 0) {
-      const memberEmbeds = roleChanges.map(buildRichMemberEmbed);
-      for (const group of chunk(memberEmbeds, 10)) {
-        const msg = await safeSendTracked(client, publicDecisionsChannelId, { embeds: group });
+      const memberContainers = roleChanges.map(buildRichMemberContainer);
+      for (const group of chunk(memberContainers, 10)) {
+        const msg = await safeSendTracked(client, publicDecisionsChannelId, { components: group, flags: MessageFlags.IsComponentsV2 });
         if (msg?.id) newMessageIds.push(msg.id);
       }
     }
@@ -1991,12 +2003,12 @@ export async function runRecruitDailyEvaluation(client, recruitConfig, db, optio
     await managePublicDecisionsHistory(client, publicDecisionsChannelId, db, newMessageIds);
   }
 
-  const memberChatChannelId = String(runtime?.channels?.memberChatChannelId ?? '');
+  const celebrationsThreadId = String(runtime?.channels?.celebrationsThreadId ?? '');
   const memberRoleId = String(runtime?.roles?.memberRoleId ?? '');
 
   // PERFECT WAR HONORS — 3600 fame is the weekly maximum (900/day × 4 battle days,
   // fact-checked against Supercell's medal system): every battle fought, every one won.
-  // Announced publicly in member chat with a kraken-member role ping so the whole hub
+  // Announced in the celebrations thread with a kraken-member role ping so the whole hub
   // sees it. Runs inside the once-per-war-week review, so it can never double-post.
   if (!manualSafe) {
     const perfectWarriors = results.filter(r => Number(r.sum7?.fame ?? 0) >= 3600);
@@ -2004,7 +2016,7 @@ export async function runRecruitDailyEvaluation(client, recruitConfig, db, optio
       if (!isValidDiscordId(r.discordId)) continue;
       const who = displayMember(r);
       const s = r.sum7 ?? {};
-      await postCelebration(client, memberChatChannelId, {
+      await postCelebration(client, celebrationsThreadId, {
         content: isValidDiscordId(memberRoleId) ? `<@&${memberRoleId}> Witness. <@${r.discordId}>` : `Witness. <@${r.discordId}>`,
         title: '⚔️ THE GODS HAVE SPOKEN — VALHALLA TAKES NOTICE',
         description: [
@@ -2045,7 +2057,7 @@ export async function runRecruitDailyEvaluation(client, recruitConfig, db, optio
     for (const r of promotions) {
       if (!isValidDiscordId(r.discordId)) continue;
       const who = displayMember(r);
-      await postCelebration(client, memberChatChannelId, {
+      await postCelebration(client, celebrationsThreadId, {
         content: isValidDiscordId(memberRoleId) ? `<@&${memberRoleId}> Rise. <@${r.discordId}>` : `Rise. <@${r.discordId}>`,
         title: '🛡️ THE GATES OF WARCORE OPEN',
         description: [
@@ -2076,7 +2088,7 @@ export async function runRecruitDailyEvaluation(client, recruitConfig, db, optio
       db,
       history,
       results,
-      memberChatChannelId,
+      celebrationsThreadId,
       memberRoleId,
       logsChannelId,
       expectedDecksPerDay: EXPECTED_DECKS_PER_DAY,

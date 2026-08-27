@@ -14,6 +14,21 @@ clicked (a real privilege-escalation risk the naive version would have
 shipped — see CLAUDE.md for detail). `/recruit-setup` remains available and
 fully unchanged in behavior as the manual fallback.
 
+**Update (2026-08-27): the chat-channel adoption option described below was
+retired entirely, not just re-warned.** Live-testing the wizard's actual DM
+surfaced that its warning ("this locks your whole membership out
+immediately") described a genuine dealbreaker, not just a risk worth
+flagging. Investigating why KRAKEN needed a dedicated member-chat channel at
+all found that it didn't — every use of `memberChatChannelId` was the bot
+*posting into* it (celebrations, weekly summaries), never something
+requiring restricted visibility. That content was merged into
+`#kraken-decisions` instead (organized into two standing threads —
+Celebrations & Records, Weekly Summary), which is always a channel KRAKEN
+creates and owns itself, never adopted from an existing server — removing
+the lockout risk structurally instead of just warning about it. The wizard
+now asks only 2 questions (leaders chat, leaders role), not 3. See
+`CLAUDE.md`'s dated entry for full detail.
+
 ## The problem this solves
 
 Two related gaps, both already found and reasoned through:
@@ -23,8 +38,8 @@ Two related gaps, both already found and reasoned through:
    after the bot joins.
 2. **`/recruit-setup` always creates its own channels/roles fresh**, even
    when an already-established clan already has an equivalent — most
-   commonly their own general chat channel and their own `leaders`/`officer`
-   role. Today, adopting an existing one instead requires manually editing
+   commonly their own `leaders`/`officer` chat channel and role. Today,
+   adopting an existing one instead requires manually editing
    `config/recruit.config.json` and copying a Discord channel/role ID via
    Developer Mode — a real technical barrier for exactly the non-technical
    clan leaders this project is built for.
@@ -36,17 +51,20 @@ creates — most have no real-world equivalent an existing clan would already
 have (`kraken-member`, `kraken-warcore`, `kraken-underwatch`, `probation`,
 `on a break`, `remove`, `waitlist`, `new-arrival` are all KRAKEN-specific
 tier/state concepts with no clean 1:1 mapping to some pre-existing informal
-role). Only three things are common enough, with a clean enough 1:1 real-world
-meaning, to be worth an adoption option:
+role). A general/chat-channel adoption option was considered too, but was
+retired entirely (not just excluded from this scope) — see the 2026-08-27
+update at the top of this doc. Two things remain worth an adoption option:
 
-1. **Existing general/chat channel** → maps to `channels.memberChatChannelId`
-   (config override already exists today, just not exposed as an in-Discord
-   picker).
-2. **Existing leaders/officers chat channel** → maps to
-   `channels.leadersChatChannelId` (same — override already exists).
-3. **Existing leaders/officers role** → maps to `roles.leadersRoleId` (same).
+1. **Existing leaders/officers chat channel** → maps to
+   `channels.leadersChatChannelId` (config override already exists today,
+   just not exposed as an in-Discord picker).
+2. **Existing leaders/officers role** → maps to `roles.leadersRoleId` (same).
 
 ## Two real risks that must be surfaced, not silently applied
+
+*(The chat-channel timing risk below is historical — that adoption option no
+longer exists, see the 2026-08-27 update at the top of this doc. Left as-is
+for the reasoning trail; only the leaders-role risk is still live.)*
 
 - **Chat channel timing risk (existing, already-active servers only):**
   pointing KRAKEN at a clan's real, currently-open chat channel and locking

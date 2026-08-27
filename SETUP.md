@@ -113,39 +113,34 @@ The bot refuses to start while any `PUT_*` placeholder remains — that's a guar
 not a bug.
 
 **Worth knowing before your first `/recruit-setup` run:** every Discord server
-comes with its own default `#general` channel, created automatically, visible to
-everyone — `/recruit-setup` never touches it (it never guesses which channel to
-lock down by name, see [Role hierarchy](#role-hierarchy) below for why). Left
-alone, that means an unverified new-arrival can already chat in the default
-`#general` before ever applying, bypassing the whole point of `#link-account`
-being the only thing they're supposed to see. Fix this by pointing KRAKEN at
-your existing default channel instead of letting it create a second one: copy
-that channel's ID and set `channels.memberChatChannelId` to it in
-`recruit.config.json`. `/recruit-setup` will then adopt and lock it down
-(members + leaders only) instead of creating a separate `#general`-named
-channel next to it.
+comes with its own default `#general` channel, created automatically, visible
+to everyone. KRAKEN doesn't manage it, adopt it, or touch its permissions —
+it never needed a dedicated member-chat channel of its own in the first
+place (every bot-posted celebration/summary that used to need one now goes
+into threads under `#kraken-decisions` instead, see
+[docs/commands.md](docs/commands.md)). If you want `#general` restricted to
+verified members only, that's a normal Discord permission change you can
+make yourself in **Server Settings → Channels**; KRAKEN won't fight you on
+it either way.
 
-**Timing matters if this is an already-active server, not a fresh one.**
-Locking the real chat channel down immediately would cut off every existing
-member who hasn't relinked yet from a channel they were already using —
-before they've had the chance to. On a genuinely fresh server with nobody in
-it yet, do this immediately. On an existing clan's server, leave this unset
-at first (KRAKEN's own separate channel is a safe placeholder), and only set
-`memberChatChannelId` and re-run `/recruit-setup` once most of the roster has
-already relinked. The same logic applies to `channels.leadersChatChannelId`
-if adopting an existing leaders/officers chat channel. Skip this entirely and
-KRAKEN creates its own gated channel regardless — the original default
-`#general` just stays open until you do.
+If your leadership team already has its own chat channel and/or Discord
+role, you can point KRAKEN at those instead of letting it create fresh ones:
+set `channels.leadersChatChannelId` and/or `roles.leadersRoleId` in
+`recruit.config.json` to their IDs before running `/recruit-setup`. Note on
+the role: KRAKEN zeroes every role it manages down to no server-wide
+permissions of its own (access is controlled per-channel, not through role
+permissions) — if your existing role already has real permissions attached
+(Kick Members, Manage Messages, etc.), those get removed the moment it's
+adopted.
 
 **If this is a genuinely first-ever boot for this clan, you don't need to do
 any of the above by hand** — KRAKEN DMs the server owner an interactive
 setup wizard automatically the first time it starts, with in-Discord pickers
-for the same three adoptions (chat channel, leaders chat channel, leaders
-role) and the same warnings built in. This manual config-editing path is
-still there for later, or as a fallback if the DM never arrives (DMs from
-non-friends disabled) — see
-[docs/first-boot-wizard-plan.md](docs/first-boot-wizard-plan.md) for exactly
-how it behaves.
+for the same two adoptions (leaders chat channel, leaders role) and the same
+warning built in. This manual config-editing path is still there for later,
+or as a fallback if the DM never arrives (DMs from non-friends disabled) —
+see [docs/first-boot-wizard-plan.md](docs/first-boot-wizard-plan.md) for
+exactly how it behaves.
 
 ---
 
@@ -211,15 +206,15 @@ builds the entire Recruit HQ automatically:
   creating it entirely for a genuinely brand-new server with no prior
   roster — defaults to on.
 - `#kraken-decisions` — members-only (`kraken-member` + `leaders`),
-  member-facing decision summaries
+  member-facing decision summaries, with two standing threads underneath it:
+  **Celebrations & Records** (perfect-war honors, promotions, clan hall-of-fame)
+  and **Weekly Summary** (the weekly member highlights post) — KRAKEN doesn't
+  create a separate chat channel of its own for any of this
 - `#on-a-break` — members-only (`kraken-member` + `leaders`), break-request
   panel
 - **leaders** category (leaders-only): `#kraken-decisions-leaders` (full
   internal decision log), `#kraken-ops`, `#logs`, `#removal-queue` — these
   are all bot-managed data/log surfaces, not a place to actually chat
-- `#general` (member chat) — created if it doesn't already exist (or
-  adopted by ID via `channels.memberChatChannelId`) —
-  members-only (`kraken-member` + `leaders`)
 - `#leaders-chat` (plain leaders-only chat, separate from the leaders
   category's bot-managed data/log channels above) — created if missing
   (or adopted by ID via `channels.leadersChatChannelId`)
