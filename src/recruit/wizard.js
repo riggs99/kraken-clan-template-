@@ -26,11 +26,24 @@ const PENDING_KEYS = {
 };
 
 const WARNING_TEXT = [
-  '👋 I\'m KRAKEN — let\'s get your clan set up.',
+  '👋 I\'m KRAKEN — I handle recruiting, member tiers, and war tracking for your clan.',
   '',
-  '⚠️ **Adopting your existing chat channel below makes it members-only immediately** — every current member loses access to it until they relink via the account-linking channel this creates. Leave it blank to keep a separate KRAKEN-only chat channel instead, and adopt your real one later once people have actually relinked.',
+  'Before I can do that, I need to set up some channels and roles in this server. I can create everything brand new, or — if you already have some of these — I can use what you\'ve got instead. For anything you leave blank below, I\'ll just create a fresh one automatically. **Not sure? Leaving everything blank is the safe default.**',
   '',
-  '⚠️ **Adopting an existing leaders/officer role strips its current server-wide permissions.** KRAKEN manages every role it uses through channel-specific access only, never the role\'s own permissions — if the role you pick already has real permissions attached (Kick Members, Manage Messages, etc.), those will be removed.',
+  '**1️⃣ Your clan\'s general chat channel** (first dropdown below)',
+  'If you already have one everyone uses, pick it here.',
+  '⚠️ Doing this makes that channel members-only *immediately* — everyone currently in it loses access until they verify/relink their account in a channel I\'ll create for that. If you\'re not ready for that yet, leave this blank — I\'ll make a separate KRAKEN-only chat instead, and you can switch everyone over to your real one later.',
+  '',
+  '**2️⃣ Your leaders/officers chat channel** (second dropdown below)',
+  'If you already have a private channel for your leadership team, pick it here. Leave it blank and I\'ll create a new private one.',
+  '',
+  '**3️⃣ Your leaders/officers role** (third dropdown below)',
+  'If your leadership team already has a Discord role, pick it here.',
+  '⚠️ I control access channel-by-channel, not through role permissions — if this role currently has server-wide permissions like Kick Members or Manage Messages, those will be removed when I take it over.',
+  '',
+  'Once you\'ve made your picks (or left them blank), tap one of the buttons below:',
+  '✅ **Confirm & Set Up** — creates everything now, using whatever you picked above (and fresh ones for anything left blank).',
+  '🔄 **Start Fresh** — skips all of the above and creates everything brand new, exactly like a first-time setup.',
 ].join('\n');
 
 function readStaged(db) {
@@ -65,7 +78,7 @@ function buildWizardComponents(staged = {}) {
     .setChannelTypes(ChannelType.GuildText)
     .setMinValues(0)
     .setMaxValues(1)
-    .setPlaceholder('Existing clan chat channel? (leave blank to create a separate one)');
+    .setPlaceholder('1️⃣ Your existing general chat? (optional)');
   if (isValidDiscordId(staged.chatChannelId)) chatChannelSelect.setDefaultChannels(staged.chatChannelId);
 
   const leadersChatSelect = new ChannelSelectMenuBuilder()
@@ -73,19 +86,19 @@ function buildWizardComponents(staged = {}) {
     .setChannelTypes(ChannelType.GuildText)
     .setMinValues(0)
     .setMaxValues(1)
-    .setPlaceholder('Existing leaders/officer chat channel? (leave blank to create fresh)');
+    .setPlaceholder('2️⃣ Your existing leaders chat? (optional)');
   if (isValidDiscordId(staged.leadersChatChannelId)) leadersChatSelect.setDefaultChannels(staged.leadersChatChannelId);
 
   const leadersRoleSelect = new RoleSelectMenuBuilder()
     .setCustomId('wizard:pick:leadersRole')
     .setMinValues(0)
     .setMaxValues(1)
-    .setPlaceholder('Existing leaders/officer role? (leave blank to create fresh)');
+    .setPlaceholder('3️⃣ Your existing leaders role? (optional)');
   if (isValidDiscordId(staged.leadersRoleId)) leadersRoleSelect.setDefaultRoles(staged.leadersRoleId);
 
   const buttonRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('wizard:confirm').setLabel('Confirm & Set Up').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('wizard:startFresh').setLabel('Start Fresh').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('wizard:confirm').setLabel('✅ Confirm & Set Up').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('wizard:startFresh').setLabel('🔄 Start Fresh').setStyle(ButtonStyle.Secondary),
   );
 
   return [
