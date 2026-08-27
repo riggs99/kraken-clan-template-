@@ -1,7 +1,7 @@
 // First-boot setup wizard — DMs a newly-invited server's owner an interactive select-menu
 // wizard the very first time KRAKEN starts, instead of requiring them to know /recruit-setup
 // exists at all. See docs/first-boot-wizard-plan.md for the full design reasoning.
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder, RoleSelectMenuBuilder, ChannelType, MessageFlags } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder, RoleSelectMenuBuilder, ChannelType } from 'discord.js';
 import { getRecruitRuntimeIds, getRecruitSetting, setRecruitSetting } from './db.js';
 import { runRecruitSetupCore, formatSetupCompletionMessage, trySetupLock, releaseSetupLock } from './commands/setup.js';
 import { safeDm } from './commands/apply.js';
@@ -151,10 +151,21 @@ export async function handleWizardInteraction(interaction, { recruitConfig, db, 
   }
 
   if (customId === 'wizard:confirm' || customId === 'wizard:startFresh') {
+    // Ack immediately, before any slow work. runRecruitSetupCore alone (creating ~11 channels,
+    // ~9 roles, applying every permission overwrite) routinely takes well over Discord's 3-second
+    // interaction-ack window — without this, the interaction token dies before the final
+    // interaction.update() below ever runs, that call throws silently (caught by .catch(() => {})),
+    // and the owner sees Discord's native "This interaction failed" with no completion message at
+    // all, even though setup actually succeeded server-side. Every reply below this point uses
+    // editReply, which edits the same deferred message, matching the immediate-ack-then-edit
+    // pattern already used everywhere else in this codebase for slow actions (ban-member.js,
+    // remove-member.js, break-reset.js, etc.).
+    await interaction.deferUpdate().catch(() => {});
+
     const recruitGuildId = String(recruitConfig?.recruitGuildId ?? '');
     const guild = isValidDiscordId(recruitGuildId) ? await client.guilds.fetch(recruitGuildId).catch(() => null) : null;
     if (!guild) {
-      await interaction.update({ content: 'Could not reach the server anymore — this wizard link is no longer valid.', components: [] }).catch(() => {});
+      await interaction.editReply({ content: 'Could not reach the server anymore — this wizard link is no longer valid.', components: [] }).catch(() => {});
       return true;
     }
 
@@ -162,7 +173,7 @@ export async function handleWizardInteraction(interaction, { recruitConfig, db, 
     // ownership could theoretically change between send and click.
     const owner = await guild.fetchOwner().catch(() => null);
     if (!owner || owner.id !== interaction.user.id) {
-      await interaction.reply({ content: 'Only the server owner can confirm this.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await interaction.editReply({ content: 'Only the server owner can confirm this.', components: [] }).catch(() => {});
       return true;
     }
 
@@ -172,7 +183,7 @@ export async function handleWizardInteraction(interaction, { recruitConfig, db, 
     // created.
     if (isAlreadyConfigured(db)) {
       clearStaged(db);
-      await interaction.update({ content: 'This clan was already set up — this wizard link is no longer needed.', components: [] }).catch(() => {});
+      await interaction.editReply({ content: 'This clan was already set up — this wizard link is no longer needed.', components: [] }).catch(() => {});
       return true;
     }
 
@@ -180,7 +191,7 @@ export async function handleWizardInteraction(interaction, { recruitConfig, db, 
     clearStaged(db);
 
     if (!trySetupLock()) {
-      await interaction.update({
+      await interaction.editReply({
         content: '⏳ Recruit HQ setup is already running from another request. Wait for it to finish, then try again.',
         components: buildWizardComponents(readStaged(db)),
       }).catch(() => {});
@@ -198,7 +209,7 @@ export async function handleWizardInteraction(interaction, { recruitConfig, db, 
     // On failure, leave the buttons clickable for a retry (setup is safe to re-run) rather
     // than disabling them — a missing-permissions failure is fixable by the owner without
     // needing a fresh wizard DM.
-    await interaction.update({
+    await interaction.editReply({
       content: message,
       components: result.ok ? [] : buildWizardComponents(readStaged(db)),
     }).catch(() => {});
