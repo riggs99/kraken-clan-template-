@@ -197,57 +197,52 @@ async function findOrCreateManagedChannel(guild, { configuredId, storedId, creat
   return channel;
 }
 
-// Guards against two /recruit-setup runs overlapping — e.g. two co-leaders both trying to
-// help at once, or a double-click. Without this, both invocations could read "no stored ID
-// yet" for a channel/role before either has finished writing one, and both create their own
-// duplicate. Only one instance per process ever exists (each clan is its own isolated bot), so
-// a single module-level flag is enough — no need for a per-guild map.
+// Guards against overlapping setup runs — e.g. two co-leaders both trying to help at once, a
+// double-click, or a race between /recruit-setup and the first-boot wizard's Confirm button.
+// Both entry points share this one module-level flag rather than each having their own — only
+// one instance per process ever exists (each clan is its own isolated bot), so a single flag
+// is enough, no need for a per-guild map.
 let setupInFlight = false;
 
+export function trySetupLock() {
+  if (setupInFlight) return false;
+  setupInFlight = true;
+  return true;
+}
+
+export function releaseSetupLock() {
+  setupInFlight = false;
+}
+
 export async function handleSetup(interaction, ctx) {
-  if (setupInFlight) {
+  if (!trySetupLock()) {
     return interaction.reply({
       content: '⏳ Recruit HQ setup is already running from another request. Wait for it to finish, then run this again if anything still needs fixing.',
       flags: MessageFlags.Ephemeral,
     });
   }
-  setupInFlight = true;
   try {
     return await handleSetupInner(interaction, ctx);
   } finally {
-    setupInFlight = false;
+    releaseSetupLock();
   }
 }
 
-async function handleSetupInner(interaction, ctx) {
-  const recruitConfig = ctx?.recruitConfig;
-  const db = ctx?.db;
-
-  const recruitGuildId = String(recruitConfig?.recruitGuildId ?? '');
-  if (interaction.guildId !== recruitGuildId) return;
-
-  const allowed = await requireOwnerOrAdmin(interaction);
-  if (!allowed) {
-    return interaction.reply({ content: 'Only the server owner or an admin can run this.', flags: MessageFlags.Ephemeral });
-  }
-
-  const guild = interaction.guild;
-  if (!guild) return interaction.reply({ content: 'Guild not available.', flags: MessageFlags.Ephemeral });
-
+// Guild-and-db-driven core, callable without a live Interaction — extracted so the first-boot
+// DM wizard (src/recruit/wizard.js) can run the exact same setup logic from inside a DM
+// interaction, where interaction.guild is always null. Returns a structured result instead of
+// replying, so each caller (the slash command below, or the wizard) can present it however
+// fits their own context.
+export async function runRecruitSetupCore(guild, { db, recruitConfig, client }) {
   // guild.members.me is a cache-only getter — it can be null right when the bot has just
-  // started, which is exactly when /recruit-setup is typically run for the first time on a
-  // freshly-invited bot. Fetched explicitly instead, same as every other member lookup in
-  // this codebase (permissions.js, evaluator.js, apply.js, etc.), so this and the role-
-  // hierarchy check further down are never gated on whatever happens to already be cached.
-  const botMember = await guild.members.fetch(interaction.client.user.id).catch(() => null);
+  // started, which is exactly when this is typically run for the first time on a freshly-
+  // invited bot. Fetched explicitly instead, same as every other member lookup in this
+  // codebase (permissions.js, evaluator.js, apply.js, etc.).
+  const botMember = await guild.members.fetch(client.user.id).catch(() => null);
 
   // The full set the invite link is supposed to grant (see docs/onboard-a-clan.md) — checked
   // here, not just the two most critical ones, so a partial/wrong invite fails clearly up
-  // front instead of surfacing later as a silent per-channel permission gap. Uses the bot's
-  // actual guild-wide permissions (not interaction.appPermissions, which only reflects the
-  // channel the command happened to be run from) — a channel-specific overwrite denying e.g.
-  // Send Messages there would otherwise cause a false "missing permissions" rejection even
-  // when the invite grant is genuinely complete.
+  // front instead of surfacing later as a silent per-channel permission gap.
   const requiredBotPermissions = [
     ['Manage Roles', PermissionFlagsBits.ManageRoles],
     ['Manage Channels', PermissionFlagsBits.ManageChannels],
@@ -258,13 +253,8 @@ async function handleSetupInner(interaction, ctx) {
   ];
   const missingBotPermissions = requiredBotPermissions.filter(([, flag]) => !botMember?.permissions?.has(flag));
   if (missingBotPermissions.length > 0) {
-    return interaction.reply({
-      content: `KRAKEN is missing these permissions in this server: ${missingBotPermissions.map(([label]) => `**${label}**`).join(', ')}. Re-invite the bot with the full permission set from the setup guide, then run this again.`,
-      flags: MessageFlags.Ephemeral
-    });
+    return { ok: false, reason: 'missing-bot-permissions', missing: missingBotPermissions.map(([label]) => label) };
   }
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const existing = getRecruitRuntimeIds(db);
   const alreadyConfigured =
@@ -296,7 +286,7 @@ async function handleSetupInner(interaction, ctx) {
   const modRoleIds = rolesWithModPowers(guild);
 
   const everyoneId = guild.roles.everyone.id;
-  const botId = interaction.client.user.id;
+  const botId = client.user.id;
 
   // Created up front so every leader-only channel below can be parented into it at creation
   // time, instead of a leader having to drag channels into a category by hand afterward —
@@ -326,7 +316,7 @@ async function handleSetupInner(interaction, ctx) {
       allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
     }))
   ];
- 
+
   // Public landing channel: readable by everyone, writable only by KRAKEN (+ leaders).
   const welcomeOverwrites = [
     { id: everyoneId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory], deny: [PermissionFlagsBits.SendMessages] },
@@ -558,7 +548,7 @@ async function handleSetupInner(interaction, ctx) {
 
   // Post/pin the welcome embed so new arrivals see what to do.
   try {
-    await ensureWelcomePost(interaction.client, recruitConfig, db);
+    await ensureWelcomePost(client, recruitConfig, db);
   } catch {
     // ignore
   }
@@ -567,17 +557,17 @@ async function handleSetupInner(interaction, ctx) {
   // bot (the normal case, not just a fresh boot) left the Link My Account panel missing until
   // the next full process restart. Harmless no-op if relink is disabled or the channel isn't set.
   try {
-    await ensureRelinkPost(interaction.client, recruitConfig, db);
+    await ensureRelinkPost(client, recruitConfig, db);
   } catch {
     // ignore
   }
   try {
-    await ensureBreakPost(interaction.client, recruitConfig, db);
+    await ensureBreakPost(client, recruitConfig, db);
   } catch {
     // ignore
   }
   try {
-    await ensureAppealsPost(interaction.client, recruitConfig, db);
+    await ensureAppealsPost(client, recruitConfig, db);
   } catch {
     // ignore
   }
@@ -612,34 +602,81 @@ async function handleSetupInner(interaction, ctx) {
     .filter(r => r.position >= botHighestPosition)
     .map(r => r.name);
 
-  const msg = [
+  return {
+    ok: true,
+    alreadyConfigured,
+    channels: {
+      welcomeChannelId: welcomeChannel.id,
+      decisionsChannelId: decisionsChannel.id,
+      publicDecisionsChannelId: publicDecisionsChannel.id,
+      onBreakChannelId: onBreakChannel.id,
+      opsChannelId: opsChannel.id,
+      logsChannelId: logsChannel.id,
+      removalQueueChannelId: removalQueueChannel.id,
+      memberChatChannelId: memberChatChannel.id,
+      leadersChatChannelId: leadersChatChannel.id,
+      waitingListChannelId: waitingListChannel.id,
+      appealsChannelId: appealsChannel.id,
+    },
+    relinkChannelId: relinkChannel ? welcomeChannel.id : null,
+    roles: {
+      probationRoleId: roleProbation.id,
+      newArrivalRoleId: roleNewArrival.id,
+      memberRoleId: roleMember.id,
+      warcoreRoleId: roleWarcore.id,
+      underwatchRoleId: roleUnderwatch.id,
+      onBreakRoleId: roleOnBreak.id,
+      removeRoleId: roleRemove.id,
+      waitlistRoleId: roleWaitlist.id,
+      leadersRoleId: roleLeaders.id,
+    },
+    unassignableRoleNames,
+    botRoleName,
+  };
+}
+
+// Pure string-building from a runRecruitSetupCore() result — shared by the slash command
+// reply and the first-boot wizard's DM completion notice. Channel/role mentions (<#id>,
+// <@&id>) render identically in a DM as in a guild channel, so there's no reason to maintain
+// a second, shorter message just because the trigger was a DM instead of a command.
+export function formatSetupCompletionMessage(result) {
+  if (!result?.ok) {
+    if (result?.reason === 'missing-bot-permissions') {
+      return `KRAKEN is missing these permissions in this server: ${result.missing.map(label => `**${label}**`).join(', ')}. Re-invite the bot with the full permission set from the setup guide, then run this again.`;
+    }
+    return 'Setup could not complete — please try again.';
+  }
+
+  const { channels, roles, relinkChannelId, alreadyConfigured, unassignableRoleNames, botRoleName } = result;
+
+  return [
     '✅ Recruit HQ setup complete.',
     '',
     `Channels:`,
-    relinkChannel
-      ? `- link-account (Agree & Join + Link My Account): <#${welcomeChannel.id}>`
-      : `- link-account (Agree & Join only — relink disabled via enableRelinkChannel: false): <#${welcomeChannel.id}>`,
-    `- kraken-decisions-leaders: <#${decisionsChannel.id}>`,
-    `- kraken-decisions: <#${publicDecisionsChannel.id}>`,
-    `- on-a-break: <#${onBreakChannel.id}>`,
-    `- kraken-ops: <#${opsChannel.id}>`,
-    `- logs: <#${logsChannel.id}>`,
-    `- removal-queue: <#${removalQueueChannel.id}>`,
-    `- member chat: <#${memberChatChannel.id}>`,
-    `- leaders chat: <#${leadersChatChannel.id}>`,
-    `- waiting-list: <#${waitingListChannel.id}>`,
-    `- appeals: <#${appealsChannel.id}>`,
+    relinkChannelId
+      ? `- link-account (Agree & Join + Link My Account): <#${channels.welcomeChannelId}>`
+      : `- link-account (Agree & Join only — relink disabled via enableRelinkChannel: false): <#${channels.welcomeChannelId}>`,
+    `- kraken-decisions-leaders: <#${channels.decisionsChannelId}>`,
+    `- kraken-decisions: <#${channels.publicDecisionsChannelId}>`,
+    `- on-a-break: <#${channels.onBreakChannelId}>`,
+    `- kraken-ops: <#${channels.opsChannelId}>`,
+    `- logs: <#${channels.logsChannelId}>`,
+    `- removal-queue: <#${channels.removalQueueChannelId}>`,
+    `- member chat: <#${channels.memberChatChannelId}>`,
+    `- leaders chat: <#${channels.leadersChatChannelId}>`,
+    `- waiting-list: <#${channels.waitingListChannelId}>`,
+    `- appeals: <#${channels.appealsChannelId}>`,
     '',
     `Roles:`,
-    `- probation: <@&${roleProbation.id}>`,
-    `- new-arrival: <@&${roleNewArrival.id}>`,
-    `- kraken-member: <@&${roleMember.id}>`,
-    `- kraken-warcore: <@&${roleWarcore.id}>`,
-    `- kraken-underwatch: <@&${roleUnderwatch.id}>`,
-    `- on a break: <@&${roleOnBreak.id}>`,
-    `- remove: <@&${roleRemove.id}>`,
-    `- waitlist: <@&${roleWaitlist.id}>`,
-    `- leaders: <@&${roleLeaders.id}>`,
+    `- probation: <@&${roles.probationRoleId}>`,
+    `- new-arrival: <@&${roles.newArrivalRoleId}>`,
+    `- kraken-member: <@&${roles.memberRoleId}>`,
+    `- kraken-warcore: <@&${roles.warcoreRoleId}>`,
+    `- kraken-underwatch: <@&${roles.underwatchRoleId}>`,
+    `- on a break: <@&${roles.onBreakRoleId}>`,
+    `- remove: <@&${roles.removeRoleId}>`,
+    `- waitlist: <@&${roles.waitlistRoleId}>`,
+    `- leaders: <@&${roles.leadersRoleId}>`,
     '',
     ...(unassignableRoleNames.length > 0
       ? [
@@ -651,6 +688,26 @@ async function handleSetupInner(interaction, ctx) {
     alreadyConfigured ? 'ℹ️ IDs were already configured; values were refreshed in SQLite.' : 'ℹ️ IDs stored in SQLite (kraken.db).',
     'Next: ensure `config/recruit.config.json` has `"enabled": true`, then run `npm run deploy` and restart the bot.'
   ].join('\n');
+}
 
-  return interaction.editReply({ content: msg });
+async function handleSetupInner(interaction, ctx) {
+  const recruitConfig = ctx?.recruitConfig;
+  const db = ctx?.db;
+
+  const recruitGuildId = String(recruitConfig?.recruitGuildId ?? '');
+  if (interaction.guildId !== recruitGuildId) return;
+
+  const allowed = await requireOwnerOrAdmin(interaction);
+  if (!allowed) {
+    return interaction.reply({ content: 'Only the server owner or an admin can run this.', flags: MessageFlags.Ephemeral });
+  }
+
+  const guild = interaction.guild;
+  if (!guild) return interaction.reply({ content: 'Guild not available.', flags: MessageFlags.Ephemeral });
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const result = await runRecruitSetupCore(guild, { db, recruitConfig, client: interaction.client });
+
+  return interaction.editReply({ content: formatSetupCompletionMessage(result) });
 }

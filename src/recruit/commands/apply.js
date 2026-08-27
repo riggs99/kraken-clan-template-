@@ -26,9 +26,11 @@ function nowMs() {
   return Date.now();
 }
 
-async function safeDm(user, content) {
+// Accepts either plain string content (existing callers) or a full message payload
+// (e.g. { content, components } — the first-boot wizard's select menus/buttons).
+export async function safeDm(user, payload) {
   try {
-    await user.send({ content });
+    await user.send(typeof payload === 'string' ? { content: payload } : payload);
     return true;
   } catch {
     return false;

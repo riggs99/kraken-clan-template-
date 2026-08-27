@@ -137,9 +137,15 @@ if adopting an existing leaders/officers chat channel. Skip this entirely and
 KRAKEN creates its own gated channel regardless — the original default
 `#general` just stays open until you do.
 
-*(A planned first-boot wizard will eventually turn this into an in-Discord
-picker instead of manual config editing — see
-[docs/first-boot-wizard-plan.md](docs/first-boot-wizard-plan.md).)*
+**If this is a genuinely first-ever boot for this clan, you don't need to do
+any of the above by hand** — KRAKEN DMs the server owner an interactive
+setup wizard automatically the first time it starts, with in-Discord pickers
+for the same three adoptions (chat channel, leaders chat channel, leaders
+role) and the same warnings built in. This manual config-editing path is
+still there for later, or as a fallback if the DM never arrives (DMs from
+non-friends disabled) — see
+[docs/first-boot-wizard-plan.md](docs/first-boot-wizard-plan.md) for exactly
+how it behaves.
 
 ---
 
@@ -181,14 +187,18 @@ For 24/7 operation under a process manager, see
 
 ---
 
-## Step 7 — Run `/recruit-setup` in Discord
+## Step 7 — Run `/recruit-setup` in Discord (or just wait for the DM)
+
+On a genuinely first-ever boot, KRAKEN DMs the server owner an interactive
+setup wizard automatically — no command needed, just click through the
+prompts it sends. `/recruit-setup` below is what that wizard runs under the
+hood, and remains available any time as the manual path (re-running it,
+fixing role drift, or as a fallback if the DM never arrives). See
+[docs/first-boot-wizard-plan.md](docs/first-boot-wizard-plan.md) for exactly
+how the automatic wizard behaves.
 
 In the server, as the **owner or an admin**, run `/recruit-setup` once. It
 builds the entire Recruit HQ automatically:
-
-*(Planned, not yet built: a first-boot DM wizard that walks the owner through
-this automatically instead of requiring them to know this command exists —
-see [docs/first-boot-wizard-plan.md](docs/first-boot-wizard-plan.md).)*
 
 **Channels**
 - `#link-account` — the only channel visible to everyone, including a

@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { loadEnv } from '../src/env.js';
 import { loadOpsConfig, loadRecruitConfig } from '../src/config/loadConfig.js';
 import { recruitCommands, handleRecruitInteraction } from '../src/recruit/index.js';
+import { handleWizardInteraction } from '../src/recruit/wizard.js';
+import { runRecruitSetupCore } from '../src/recruit/commands/setup.js';
 
 loadEnv();
 
@@ -72,6 +74,25 @@ await runCheck('Main index routes recruit before OPS fallback', () => {
   assert(source.includes('if (recruitConfig?.enabled && interaction.guildId === String(recruitConfig.recruitGuildId))'), 'recruit guild guard missing');
   assert(source.includes('const handled = await handleRecruitInteraction(interaction, recruitConfig);'), 'recruit handler call missing');
   assert(source.includes('if (handled) return;'), 'recruit short-circuit missing');
+});
+
+await runCheck('setup.js exports the wizard-reusable core function', () => {
+  assert(typeof runRecruitSetupCore === 'function', 'runRecruitSetupCore not exported');
+});
+
+await runCheck('Wizard handler ignores non-wizard customIds', async () => {
+  const fakeInteraction = { customId: 'not-a-wizard-id', isButton: () => true };
+  const handled = await handleWizardInteraction(fakeInteraction, {});
+  assert(handled === false, 'expected false for a non-wizard: customId');
+});
+
+await runCheck('Main index dispatches wizard: interactions before the ops/war gate', () => {
+  const source = fs.readFileSync(indexPath, 'utf8');
+  const wizardIdx = source.indexOf("wizardCustomId.startsWith('wizard:')");
+  const opsWarGateIdx = source.indexOf('interaction.isStringSelectMenu() || interaction.isButton() || interaction.isModalSubmit()');
+  assert(wizardIdx !== -1, 'wizard: dispatch branch missing');
+  assert(opsWarGateIdx !== -1, 'ops/war component gate missing');
+  assert(wizardIdx < opsWarGateIdx, 'wizard: dispatch must come before the ops/war gate, or a wizard button falls into it and misfires the "kraken role required" reply on a DM interaction');
 });
 
 const failed = checks.filter(check => !check.ok);

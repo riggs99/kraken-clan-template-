@@ -44,6 +44,7 @@ import { ensureWaitlistPost, handleWaitlistRoleChange, onMemberJoin, handleMembe
 import { removeFromWaitlist } from './recruit/db.js';
 import { startRecruitEvaluator } from './recruit/evaluator.js';
 import { handleRecruitMemberUpdate } from './recruit/manual-role-sync.js';
+import { maybeSendFirstBootWizard, handleWizardInteraction } from './recruit/wizard.js';
 
 const opsConfig = loadOpsConfig();
 const recruitConfig = loadRecruitConfig();
@@ -120,6 +121,14 @@ client.once(Events.ClientReady, async c => {
   }
 
   if (recruitConfig?.enabled) {
+    // First thing in this block, before any ensure*Post call — on a genuinely first-ever
+    // boot none of those would find a valid channel ID yet anyway (they no-op harmlessly),
+    // and this is what replaces needing to already know /recruit-setup exists at all.
+    try {
+      await maybeSendFirstBootWizard(client, recruitConfig, getRecruitDb());
+    } catch (e) {
+      console.error('[WIZARD] first-boot dispatch failed:', formatErrorForLog(e));
+    }
     try {
       await ensureWelcomePost(client, recruitConfig, getRecruitDb());
     } catch (e) {
@@ -184,6 +193,26 @@ client.on(Events.InteractionCreate, async interaction => {
           if (interaction.isAutocomplete()) return interaction.respond([]).catch(() => {});
           return interaction.reply({ content: 'This interaction is no longer valid — try the command again.', flags: MessageFlags.Ephemeral });
         }
+      }
+    }
+
+    // First-boot wizard interactions fire from a DM (guild owner clicking select menus/buttons
+    // sent to their DMs), where interaction.guildId is always null — this must be dispatched
+    // independent of the recruit-guild boundary above and the ops/war gate below, since
+    // neither could ever correctly reach it. Also covers channel-select/role-select
+    // interaction types, which the ops/war gate's own type check further below doesn't
+    // recognize at all — without this branch first, a wizard button click would otherwise
+    // fall into that gate, reduce to isAuthorized(interaction) (neither an ops nor war
+    // customId), which reads interaction.member?.roles — undefined in a DM — and incorrectly
+    // reply "You do not have the kraken role required" to the guild owner clicking their own
+    // setup wizard.
+    {
+      const wizardCustomId = typeof interaction.customId === 'string' ? interaction.customId : '';
+      if (wizardCustomId.startsWith('wizard:') && (interaction.isButton() || interaction.isChannelSelectMenu?.() || interaction.isRoleSelectMenu?.())) {
+        const handled = await handleWizardInteraction(interaction, { recruitConfig, db: getRecruitDb(), client: interaction.client });
+        if (handled) return;
+        console.error(`[WIZARD] Unhandled wizard interaction: customId=${wizardCustomId}`);
+        return interaction.reply({ content: 'This setup link is no longer valid.', flags: MessageFlags.Ephemeral }).catch(() => {});
       }
     }
 

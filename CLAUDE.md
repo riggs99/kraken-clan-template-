@@ -461,6 +461,76 @@ still match what's documented above, no drift found.
   `provision-clan.mjs` provisioning script) to confirm the merged channel
   actually works end to end before this note is updated to say so.
 
+- **First-boot DM setup wizard added (2026-08-26).** `/recruit-setup` always
+  created its own fresh channels/roles even when an established clan already
+  had an equivalent (most commonly a leaders/officer chat channel and role),
+  and nothing told a clan leader `/recruit-setup` even existed — no in-app
+  discovery at all. Built `src/recruit/wizard.js`: the moment KRAKEN boots
+  for the very first time on a newly-invited server, it DMs the guild owner
+  an interactive wizard (Discord select-menu pickers for an existing chat
+  channel, leaders chat channel, and leaders role, plus Confirm/Start Fresh
+  buttons) instead of requiring them to know a command exists at all.
+
+  Required extracting `handleSetupInner`'s core logic out of `setup.js` into
+  `runRecruitSetupCore(guild, { db, recruitConfig, client })` — a
+  guild-and-db-driven function callable without a live Interaction, plus
+  `formatSetupCompletionMessage(result)` shared verbatim between the slash
+  command's reply and the wizard's DM notice. This was necessary, not just
+  tidier: the wizard's Confirm button fires from a DM interaction, where
+  `interaction.guild` is always `null`, so the original interaction-coupled
+  function could never have been called from it. `/recruit-setup` itself is
+  now a thin wrapper around the same core — verified byte-identical
+  behavior/output, not just "should still work."
+
+  Two real bugs found and fixed during design, before either shipped:
+  1. The naive design would have written each dropdown pick directly into
+     the *live* `roles.leadersRoleId`/`channels.*` settings the instant it
+     was selected. `roles.leadersRoleId` is read live, on every interaction,
+     by `isRecruitOpsAuthorized`/`isLeaderOrAdmin` — pre-seeding it before
+     Confirm was ever clicked would have instantly granted ops/recruit-leader
+     command access to anyone already holding that role, mid-wizard, before
+     the owner confirmed anything. Fixed with staging keys
+     (`wizard.pendingChatChannelId`/`wizard.pendingLeadersChatChannelId`/
+     `wizard.pendingLeadersRoleId`) promoted into the real settings only
+     inside the Confirm handler — restart-safe with zero in-memory state,
+     since it's just more rows in `recruit_settings`.
+  2. `src/index.js`'s existing ops/war component gate had no customId-prefix
+     pre-filter — a `wizard:confirm` button click would have fallen into it,
+     reduced to `isAuthorized(interaction)` (neither an ops nor war
+     customId), which reads `interaction.member?.roles` — undefined in a DM
+     — and incorrectly told the guild owner "You do not have the `kraken`
+     role required" on their own setup wizard. Fixed with a dedicated
+     `wizard:` dispatch branch placed *before* that gate, deliberately not
+     keyed on `interaction.guildId` at all (always `null` in a DM, so
+     neither that gate nor the recruit-guild boundary above it could ever
+     have reached a wizard interaction correctly regardless).
+
+  One design reversal worth recording: the chat-channel adoption picker was
+  initially planned to be excluded from the wizard entirely, reasoning that
+  locking a clan's real, already-active chat channel to
+  `kraken-member`+`leaders` immediately is a guaranteed full-membership
+  lockout (nobody can hold `kraken-member` yet — relinking is only possible
+  *after* setup has run once). On review, excluding it outright was
+  inconsistent with how the leaders-role risk is handled right next to it
+  (also real, not hidden — just clearly warned about) — corrected to keep
+  the option with the consequence spelled out plainly in the DM's warning
+  text, so the owner makes an informed call for their own clan rather than
+  the wizard silently deciding for them.
+
+  Verified: syntax + eslint clean across every changed/new file
+  (`wizard.js`, `setup.js`, `index.js`, `apply.js`'s now-exported `safeDm`),
+  `smoke-wiring.js` extended with 3 new checks (wizard dispatch ordering,
+  wizard handler ignoring non-wizard customIds, `runRecruitSetupCore`
+  exported) — 9/11 passing, same 2 intentional `PUT_*`-placeholder failures
+  as the documented baseline. Also ran the full import chain with temporary
+  dummy real-shaped config values (reverted immediately after, confirmed
+  clean via `git status`) — this one actually logged into live Discord with
+  the real bot token already sitting in this checkout's `.env` and hit a
+  clean `ClientReady` with the new wizard code in the startup path, no
+  crashes. Not yet exercised against a genuinely fresh guild end-to-end
+  (would need `test-provision`'s stored setup state cleared and a restart)
+  — that real functional pass is the next step, not assumed done here.
+
 ### Cosmetic-only, no behavior change
 
 - `src/recruit/policy.js`'s `'TWO_WAR_INACTIVE'` reason-code constant

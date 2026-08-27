@@ -1,9 +1,18 @@
-# First-Boot Setup Wizard — design plan (not yet built)
+# First-Boot Setup Wizard — design plan (implemented)
 
-**Status: planned, not implemented.** This document captures a design worked
-out in conversation, for a future session to build. Nothing described here
-exists in the codebase yet — `/recruit-setup` (the manual command) is still
-the only way setup actually happens today.
+**Status: implemented (2026-08-26).** Built in `src/recruit/wizard.js`,
+`src/recruit/commands/setup.js` (core logic extracted into
+`runRecruitSetupCore`/`formatSetupCompletionMessage` so both `/recruit-setup`
+and the wizard share it), and `src/index.js` (the `wizard:` dispatch branch
+and the `ClientReady` hook). See `CLAUDE.md`'s dated entry for the final,
+corrected design — a few specifics below were superseded during
+implementation, most notably: the chat-channel adoption option was initially
+planned to be excluded from the wizard, then deliberately added back in
+(with an explicit warning) after review, rather than hidden; and picks are
+staged in temporary settings keys, never written live until Confirm is
+clicked (a real privilege-escalation risk the naive version would have
+shipped — see CLAUDE.md for detail). `/recruit-setup` remains available and
+fully unchanged in behavior as the manual fallback.
 
 ## The problem this solves
 
