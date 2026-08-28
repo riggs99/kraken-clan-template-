@@ -648,16 +648,30 @@ export async function runRecruitSetupCore(guild, { db, recruitConfig, client }) 
       appealsChannelId: appealsChannel.id,
     },
     relinkChannelId: relinkChannel ? welcomeChannel.id : null,
+    // *RoleName fields alongside each *RoleId exist only so formatSetupCompletionMessage can
+    // print the role's actual current name as plain text instead of an <@&id> mention — see
+    // the comment on that function for why. Matters most for an adopted role: the real name
+    // could be anything (e.g. a clan's existing "Officer" role adopted as leadersRoleId), not
+    // necessarily the default label used only when creating one fresh.
     roles: {
       probationRoleId: roleProbation.id,
+      probationRoleName: roleProbation.name,
       newArrivalRoleId: roleNewArrival.id,
+      newArrivalRoleName: roleNewArrival.name,
       memberRoleId: roleMember.id,
+      memberRoleName: roleMember.name,
       warcoreRoleId: roleWarcore.id,
+      warcoreRoleName: roleWarcore.name,
       underwatchRoleId: roleUnderwatch.id,
+      underwatchRoleName: roleUnderwatch.name,
       onBreakRoleId: roleOnBreak.id,
+      onBreakRoleName: roleOnBreak.name,
       removeRoleId: roleRemove.id,
+      removeRoleName: roleRemove.name,
       waitlistRoleId: roleWaitlist.id,
+      waitlistRoleName: roleWaitlist.name,
       leadersRoleId: roleLeaders.id,
+      leadersRoleName: roleLeaders.name,
     },
     unassignableRoleNames,
     botRoleName,
@@ -665,9 +679,15 @@ export async function runRecruitSetupCore(guild, { db, recruitConfig, client }) 
 }
 
 // Pure string-building from a runRecruitSetupCore() result — shared by the slash command
-// reply and the first-boot wizard's DM completion notice. Channel/role mentions (<#id>,
-// <@&id>) render identically in a DM as in a guild channel, so there's no reason to maintain
-// a second, shorter message just because the trigger was a DM instead of a command.
+// reply and the first-boot wizard's DM completion notice. Channel mentions (<#id>) render
+// identically in a DM as in a guild channel, so there's no reason to maintain a second,
+// shorter message just because the trigger was a DM instead of a command — but role mentions
+// (<@&id>) do NOT: Discord has no server context to resolve a role's name inside a DM, so
+// every one would render as the literal text "@unknown-role" there (confirmed live) even
+// though the role is real and correctly set up. Roles are therefore printed as plain
+// **name** (`id`) text instead of a mention, which renders identically and correctly in both
+// contexts — this is why runRecruitSetupCore's result carries a *RoleName next to every
+// *RoleId, not just the id.
 export function formatSetupCompletionMessage(result) {
   if (!result?.ok) {
     if (result?.reason === 'missing-bot-permissions') {
@@ -698,15 +718,15 @@ export function formatSetupCompletionMessage(result) {
     `- appeals: <#${channels.appealsChannelId}>`,
     '',
     `Roles:`,
-    `- probation: <@&${roles.probationRoleId}>`,
-    `- new-arrival: <@&${roles.newArrivalRoleId}>`,
-    `- kraken-member: <@&${roles.memberRoleId}>`,
-    `- kraken-warcore: <@&${roles.warcoreRoleId}>`,
-    `- kraken-underwatch: <@&${roles.underwatchRoleId}>`,
-    `- on a break: <@&${roles.onBreakRoleId}>`,
-    `- remove: <@&${roles.removeRoleId}>`,
-    `- waitlist: <@&${roles.waitlistRoleId}>`,
-    `- leaders: <@&${roles.leadersRoleId}>`,
+    `- probation: **${roles.probationRoleName}** (\`${roles.probationRoleId}\`)`,
+    `- new-arrival: **${roles.newArrivalRoleName}** (\`${roles.newArrivalRoleId}\`)`,
+    `- kraken-member: **${roles.memberRoleName}** (\`${roles.memberRoleId}\`)`,
+    `- kraken-warcore: **${roles.warcoreRoleName}** (\`${roles.warcoreRoleId}\`)`,
+    `- kraken-underwatch: **${roles.underwatchRoleName}** (\`${roles.underwatchRoleId}\`)`,
+    `- on a break: **${roles.onBreakRoleName}** (\`${roles.onBreakRoleId}\`)`,
+    `- remove: **${roles.removeRoleName}** (\`${roles.removeRoleId}\`)`,
+    `- waitlist: **${roles.waitlistRoleName}** (\`${roles.waitlistRoleId}\`)`,
+    `- leaders: **${roles.leadersRoleName}** (\`${roles.leadersRoleId}\`)`,
     '',
     ...(unassignableRoleNames.length > 0
       ? [
