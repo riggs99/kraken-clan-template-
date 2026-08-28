@@ -455,11 +455,10 @@ still match what's documented above, no drift found.
   now calls it directly, same as it already did for `ensureWelcomePost`.
   Verified offline: syntax + eslint clean, `setup.js`/`apply.js`/`index.js`
   import cleanly, `smoke-wiring.js` at the documented 6/8 placeholder-config
-  baseline. Not yet live-tested against a real Discord guild as of this
-  writing — the next step is re-running `/recruit-setup` on `kraken-host`'s
-  throwaway `test-provision` instance (already live from validating the new
-  `provision-clan.mjs` provisioning script) to confirm the merged channel
-  actually works end to end before this note is updated to say so.
+  baseline. **Live-tested (2026-08-27)** as part of the first-boot wizard's
+  end-to-end test on `test-provision` — a full setup run (via the wizard's
+  Start Fresh path) confirms `#link-account` gets created with both the
+  Agree & Join and Link My Account panels live in it, matching this design.
 
 - **First-boot DM setup wizard added (2026-08-26).** `/recruit-setup` always
   created its own fresh channels/roles even when an established clan already
@@ -527,9 +526,11 @@ still match what's documented above, no drift found.
   clean via `git status`) — this one actually logged into live Discord with
   the real bot token already sitting in this checkout's `.env` and hit a
   clean `ClientReady` with the new wizard code in the startup path, no
-  crashes. Not yet exercised against a genuinely fresh guild end-to-end
-  (would need `test-provision`'s stored setup state cleared and a restart)
-  — that real functional pass is the next step, not assumed done here.
+  crashes. **Exercised against a genuinely fresh guild end-to-end
+  (2026-08-27)** — see the member-chat-retirement entry below for the full
+  live-test writeup (both features were verified together on the same
+  `test-provision` run, since the wizard's chat-channel dropdown was removed
+  by that later change before this pass ran).
 
 - **Member-chat channel retired; celebrations/weekly summary merged into
   `#kraken-decisions` via two standing threads (2026-08-27).** Live-testing
@@ -592,11 +593,40 @@ still match what's documented above, no drift found.
   chat-channel customId/staging key are actually gone — 10/12 passing, same
   2 intentional `PUT_*`-placeholder failures as the documented baseline.
   Config files were reverted to placeholders immediately after the import
-  test, confirmed via `git status`. Not yet live-tested against a real
-  Discord guild — the next step is resetting `test-provision`'s stored setup
-  state and confirming the two new threads actually get created, and that
-  `/recruit-eval-now` plus a manually-triggered weekly-summary/celebration
-  post render correctly in their new locations with the new look.
+  test, confirmed via `git status`.
+
+  **Live-tested end to end (2026-08-27)** against `test-provision` on
+  `kraken-host`. One real deployment wrinkle surfaced and was worked through,
+  not a code bug: `git pull` on that instance initially refused (its own
+  filled-in `config/recruit.config.json` — real guild ID, clan name, invite
+  URL — conflicted with this commit's edits to the same file's `channels`
+  block); resolved cleanly with `git stash` → `git pull` → `git stash pop`
+  (auto-merged, no manual conflict resolution needed, since the two edits
+  touched different lines). A first setup attempt against a DB wiped via
+  direct SQLite deletes (rather than a genuinely fresh Discord server)
+  produced duplicate channels/roles alongside leftovers from earlier
+  sessions' testing — expected, not a bug: setup deliberately never adopts
+  an existing channel/role by name, only by a stored ID, so wiping the ID
+  memory without also removing the old Discord objects just makes it create
+  fresh ones. Re-tested after manually clearing every KRAKEN-created
+  channel/role in the test server first: one clean set, no duplicates, both
+  new threads created correctly under `#kraken-decisions`, confirmed via the
+  wizard's own completion message.
+
+  Separately, `/recruit-eval-now` turned out to be the wrong tool for
+  visually verifying the new styling — it runs in `mode: 'manual'`, which
+  `evaluator.js` uses to gate a `manualSafe` flag that deliberately skips
+  *all* public posting (decisions, celebrations, weekly summary), since it's
+  meant as a leader-facing dry-run preview, not a real evaluation. Real posts
+  only happen from the actual automatic evaluation path or the weekly-report
+  cron, neither of which is safe to force on demand. Verified instead with a
+  throwaway script (never committed, deleted immediately after) that called
+  `buildDashboardContainer` directly against the real
+  `celebrationsThreadId`/`weeklySummaryThreadId`/`publicDecisionsChannelId`
+  and posted one test message into each — confirmed all three render
+  correctly (accent color, thumbnail, header, blocks) in their intended
+  locations, decisions posts landing in the parent channel as designed while
+  celebrations/weekly-summary land in their own threads.
 
 ### Cosmetic-only, no behavior change
 
