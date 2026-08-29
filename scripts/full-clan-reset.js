@@ -14,13 +14,15 @@
  *        break request history.
  *
  * Usage (from project root):
- *   node scripts/full-clan-reset.js           — live run
- *   DRY_RUN=1 node scripts/full-clan-reset.js — preview only, no changes made
+ *   node scripts/full-clan-reset.js           — live run (asks for a typed "YES" confirm
+ *                                                 before touching anything)
+ *   DRY_RUN=1 node scripts/full-clan-reset.js — preview only, no changes made, no prompt
  */
 
 import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createInterface } from 'node:readline/promises';
 import Database from 'better-sqlite3';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { HISTORY_PATH, acquireHistoryLock, releaseHistoryLock } from '../src/history.js';
@@ -87,6 +89,21 @@ function getSetting(db, key) {
   return db.prepare('SELECT value FROM recruit_settings WHERE key = ?').get(key)?.value ?? null;
 }
 
+// This is the one script-level entry point in the codebase with no in-Discord confirm
+// button (bot commands like remove-member.js/ban-member.js already gate on one) — it only
+// ever runs by hand over SSH/terminal, so the equivalent gate here is a typed confirmation
+// rather than a UI button. DRY_RUN never reaches this: it's meant to be run first, freely,
+// to preview exactly what a live run would do before ever being asked to confirm one.
+async function confirmLiveRun() {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await rl.question('Type YES to proceed with this LIVE, irreversible reset: ');
+    return answer.trim() === 'YES';
+  } finally {
+    rl.close();
+  }
+}
+
 async function main() {
   console.log('');
   console.log('=== KRAKEN FULL CLAN RESET ===');
@@ -129,6 +146,16 @@ async function main() {
     settingsToClear.forEach(k => log(`  - ${k}`));
   }
   console.log('');
+
+  if (!DRY_RUN) {
+    const confirmed = await confirmLiveRun();
+    if (!confirmed) {
+      console.log('Aborted — confirmation not received. No changes were made.');
+      db.close();
+      process.exit(1);
+    }
+    console.log('');
+  }
 
   // --- DISCORD CLIENT ---
   log('Connecting to Discord...');
